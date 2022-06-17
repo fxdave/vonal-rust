@@ -24,7 +24,7 @@ impl Finder {
                 .map(|index| FuzzyAppInfo {
                     fuzzybuzz: index.name.clone()
                         + &index.exec
-                        + index.genericName.as_ref().unwrap_or(&String::new()),
+                        + index.generic_name.as_ref().unwrap_or(&String::new()),
                     index,
                 })
                 .collect(),

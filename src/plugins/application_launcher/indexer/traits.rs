@@ -1,7 +1,7 @@
 pub struct AppIndex {
     pub exec: String,
     pub name: String,
-    pub genericName: Option<String>
+    pub generic_name: Option<String>
 }
 
 pub trait IndexApps {

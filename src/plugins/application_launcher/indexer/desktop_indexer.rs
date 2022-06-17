@@ -22,7 +22,7 @@ impl IndexApps for DesktopIndexer {
                         Some(AppIndex {
                             name: entry.name(locale)?.to_string(),
                             exec: entry.exec()?.to_string(),
-                            genericName: entry.generic_name(locale).map(|s| s.to_string())
+                            generic_name: entry.generic_name(locale).map(|s| s.to_string())
                         })
                     })
             })
