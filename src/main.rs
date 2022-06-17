@@ -8,18 +8,13 @@ use druid::{
         TextBox,
     },
     AppLauncher, Code, Color, Env, Event, EventCtx, LensExt, PlatformError, UnitPoint, Widget,
-    WidgetExt, WidgetId, WindowDesc,
+    WidgetExt, WindowDesc,
 };
 use plugins::Plugin;
 use state::VonalState;
 use std::process::Command;
 
 use crate::state::AppEntry;
-#[repr(u16)]
-enum FixedWidgetIds {
-    /// The prefix for rows
-    Rows = 0x8000,
-}
 
 struct DefaultFocusController;
 
