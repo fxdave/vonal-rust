@@ -4,8 +4,7 @@ use druid::{
     im::{self, Vector},
     lens,
     widget::{
-        Button, Controller, CrossAxisAlignment, Flex, Label, List, Padding, SizedBox, Svg, SvgData,
-        TextBox,
+        Button, Controller, CrossAxisAlignment, Flex, Label, List, Padding, Svg, SvgData, TextBox,
     },
     AppLauncher, Code, Color, Env, Event, EventCtx, LensExt, PlatformError, UnitPoint, Widget,
     WidgetExt, WindowDesc,
@@ -77,7 +76,7 @@ fn main() -> Result<(), PlatformError> {
     Ok(())
 }
 
-fn build_row() -> SizedBox<(Vector<AppEntry>, AppEntry)> {
+fn build_row() -> impl Widget<(Vector<AppEntry>, AppEntry)> {
     Flex::row()
         .with_child(
             Label::new(
