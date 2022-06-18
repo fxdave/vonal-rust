@@ -12,13 +12,17 @@ pub struct AppEntry {
     pub actions: im::Vector<AppAction>,
 }
 
+#[derive(Clone, Lens, Data)]
+pub struct Focusable<T> {
+    pub focusable: T,
+    pub focused: bool
+}
+
 #[derive(Clone, Data, Lens)]
 pub struct VonalState {
     #[lens(name = "query_lens")]
     pub query: String,
-    #[lens(name = "focused_row_id_lens")]
-    pub focused_row_id: Option<u64>,
-    pub results: im::Vector<AppEntry>,
+    pub results: im::Vector<Focusable<AppEntry>>,
 }
 
 impl VonalState {
@@ -26,7 +30,6 @@ impl VonalState {
         VonalState {
             query: String::new(),
             results: im::vector![],
-            focused_row_id: None,
         }
     }
 }
