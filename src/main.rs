@@ -1,17 +1,15 @@
 mod plugins;
 mod state;
 use druid::{
-    im::{self, vector::Focus, Vector},
-    lens,
+    theme::{BACKGROUND_LIGHT, TEXTBOX_BORDER_WIDTH, WINDOW_BACKGROUND_COLOR},
     widget::{
-        Button, Controller, CrossAxisAlignment, Flex, Label, List, Padding, Painter, Svg, SvgData,
-        TextBox,
+        Controller, CrossAxisAlignment, Flex, Label, List, Padding, Painter, Svg, SvgData, TextBox,
     },
-    AppLauncher, Code, Color, Env, Event, EventCtx, KeyOrValue, LensExt, PlatformError,
-    RenderContext, UnitPoint, Widget, WidgetExt, WindowDesc,
+    AppLauncher, Code, Color, Env, Event, EventCtx, LensExt, PlatformError, RenderContext,
+    UnitPoint, Widget, WidgetExt, WindowDesc,
 };
 use plugins::Plugin;
-use state::VonalState;
+use state::{AppAction, VonalState};
 use std::process::Command;
 
 use crate::state::{AppEntry, Focusable};
@@ -122,48 +120,37 @@ fn main() -> Result<(), PlatformError> {
         .resizable(false)
         .title("Vonal");
 
-    AppLauncher::with_window(window).launch(state)?;
+    AppLauncher::with_window(window)
+        .configure_env(|env, _| {
+            env.set(TEXTBOX_BORDER_WIDTH, 0);
+            env.set(WINDOW_BACKGROUND_COLOR, Color::BLACK);
+            env.set(BACKGROUND_LIGHT, Color::BLACK);
+        })
+        .launch(state)?;
 
     Ok(())
 }
 
-fn build_row() -> impl Widget<(Vector<Focusable<AppEntry>>, Focusable<AppEntry>)> {
-    let my_painter = Painter::new(
-        |ctx, (_shared, item): &(im::Vector<Focusable<AppEntry>>, Focusable<AppEntry>), _| {
-            let bounds = ctx.size().to_rect();
-            if item.focused {
-                ctx.stroke(bounds, &Color::WHITE, 2.0);
-            }
-        },
-    );
+fn build_row() -> impl Widget<Focusable<AppEntry>> {
+    let row_background_painter = Painter::new(|ctx, item: &Focusable<AppEntry>, _| {
+        let bounds = ctx.size().to_rect();
+        if item.focused {
+            ctx.fill(bounds, &Color::rgba(1., 1., 1., 0.26));
+        }
+    });
 
     Flex::row()
         .with_child(
-            Label::new(
-                |(_ctx, item): &(im::Vector<Focusable<AppEntry>>, Focusable<AppEntry>),
-                 _env: &_| { item.focusable.name.clone() },
-            )
-            .align_vertical(UnitPoint::LEFT),
+            Label::new(|item: &Focusable<AppEntry>, _env: &_| item.focusable.name.clone())
+                .align_vertical(UnitPoint::LEFT),
+        )
+        .with_child(
+            List::new(|| Label::new(|item: &AppAction, _env: &_| item.name.clone()))
+                .lens(Focusable::<AppEntry>::focusable.then(AppEntry::actions)),
         )
         .with_flex_spacer(1.0)
-        .with_child(
-            Button::new("Open")
-                .background(my_painter)
-                .on_click(
-                    |_ctx,
-                     (_shared, item): &mut (
-                        im::Vector<Focusable<AppEntry>>,
-                        Focusable<AppEntry>,
-                    ),
-                     _env| {
-                        launch_app_entry(&item.focusable);
-                    },
-                )
-                .fix_size(80.0, 20.0)
-                .align_vertical(UnitPoint::CENTER),
-        )
         .padding(10.0)
-        .background(Color::rgb(0.5, 0.0, 0.5))
+        .background(row_background_painter)
         .fix_height(50.0)
 }
 
@@ -198,17 +185,9 @@ fn build_ui() -> impl Widget<VonalState> {
             application_launcher_plugin:
                 plugins::application_launcher::ApplicationLauncherPlugin::load(),
         })
-        .expand_width()
-        .border(druid::Color::BLACK, 0.0);
+        .expand_width();
 
-    let results = List::new(|| build_row()).lens(lens::Identity.map(
-        |state: &VonalState| (state.results.clone(), state.results.clone()),
-        |_state: &mut VonalState,
-         _x: (
-            im::Vector<Focusable<AppEntry>>,
-            im::Vector<Focusable<AppEntry>>,
-        )| {},
-    ));
+    let results = List::new(|| build_row()).lens(VonalState::results);
 
     Padding::new(
         10.0,
