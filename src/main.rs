@@ -3,10 +3,11 @@ mod state;
 use druid::{
     theme::{BACKGROUND_LIGHT, TEXTBOX_BORDER_WIDTH, WINDOW_BACKGROUND_COLOR},
     widget::{
-        Controller, CrossAxisAlignment, Flex, Label, List, Padding, Painter, Svg, SvgData, TextBox,
+        Controller, CrossAxisAlignment, Flex, Label, List, MainAxisAlignment, Padding, Painter,
+        Svg, SvgData, TextBox,
     },
-    AppLauncher, Code, Color, Env, Event, EventCtx, LensExt, PlatformError, RenderContext,
-    UnitPoint, Widget, WidgetExt, WindowDesc,
+    AppLauncher, Code, Color, Env, Event, EventCtx, Insets, LensExt, PlatformError, RenderContext,
+    Widget, WidgetExt, WindowDesc,
 };
 use plugins::Plugin;
 use state::{AppAction, VonalState};
@@ -139,19 +140,28 @@ fn build_row() -> impl Widget<Focusable<AppEntry>> {
         }
     });
 
+    let launch_text = Label::new("Launch").with_text_color(Color::rgba(1., 1., 1., 0.5));
+
+    let actions = List::new(|| {
+        Flex::column()
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .with_child(Label::new(|item: &AppAction, _env: &_| item.name.clone()))
+            .with_child(Label::new(|item: &AppAction, _env: &_| {
+                item.command.clone()
+            }))
+    })
+    .with_spacing(10.)
+    .horizontal()
+    .padding(Insets::new(10., 0., 0., 0.))
+    .lens(Focusable::<AppEntry>::focusable.then(AppEntry::actions));
+
     Flex::row()
-        .with_child(
-            Label::new(|item: &Focusable<AppEntry>, _env: &_| item.focusable.name.clone())
-                .align_vertical(UnitPoint::LEFT),
-        )
-        .with_child(
-            List::new(|| Label::new(|item: &AppAction, _env: &_| item.name.clone()))
-                .lens(Focusable::<AppEntry>::focusable.then(AppEntry::actions)),
-        )
-        .with_flex_spacer(1.0)
-        .padding(10.0)
+        .with_flex_child(launch_text, 0.)
+        .with_flex_child(actions, 1.)
+        .main_axis_alignment(MainAxisAlignment::Center)
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .padding(10.)
         .background(row_background_painter)
-        .fix_height(50.0)
 }
 
 fn launch_app_entry(entry: &AppEntry) {

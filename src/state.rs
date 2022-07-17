@@ -8,7 +8,6 @@ pub struct AppAction {
 
 #[derive(Clone, Lens, Data)]
 pub struct AppEntry {
-    pub name: String,
     pub actions: im::Vector<AppAction>,
 }
 

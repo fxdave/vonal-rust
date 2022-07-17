@@ -1,3 +1,5 @@
+use druid::im;
+
 use crate::state::{AppAction, AppEntry};
 
 use self::indexer::traits::IndexApps;
@@ -23,11 +25,10 @@ impl Plugin for ApplicationLauncherPlugin {
             .find(query)
             .into_iter()
             .map(|result| AppEntry {
-                name: result.index.name.to_owned(),
-                actions: druid::im::vector![AppAction {
-                    name: "Open".into(),
-                    command: result.index.exec.to_owned(),
-                }],
+                actions: im::vector![AppAction {
+                    name: result.index.name.clone(),
+                    command: result.index.exec.clone()
+                }] + result.index.actions.clone().into(),
             })
             .collect()
     }
