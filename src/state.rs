@@ -22,7 +22,7 @@ pub struct FocusableResult {
 
 impl FocusableResult {
     pub fn select_right_action(&mut self) {
-        let length = self.entry.actions.len();
+        let length = self.entry.actions.len().max(1) - 1;
         self.focused_action = (self.focused_action + 1).min(length);
     }
     pub fn select_left_action(&mut self) {

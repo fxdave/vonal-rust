@@ -128,10 +128,7 @@ fn build_ui() -> impl Widget<VonalState> {
         Ok(svg) => svg,
         Err(_err) => SvgData::default(),
     };
-    let image = Svg::new(image_data)
-        .fix_height(20.0)
-        .fix_width(30.0)
-        .padding(druid::Insets::new(0.0, 3.0, 10.0, 0.0));
+    let image = Svg::new(image_data).fix_height(20.0).fix_width(30.0);
 
     let search_box = TextBox::new()
         .with_placeholder("Try some keyword...")
@@ -151,7 +148,8 @@ fn build_ui() -> impl Widget<VonalState> {
         Flex::column()
             .with_child(
                 Flex::row()
-                    .cross_axis_alignment(CrossAxisAlignment::Start)
+                    .main_axis_alignment(MainAxisAlignment::Center)
+                    .cross_axis_alignment(CrossAxisAlignment::Center)
                     .with_flex_child(image, 0.0)
                     .with_flex_child(search_box, 1.0),
             )
