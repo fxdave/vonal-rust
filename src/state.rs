@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use druid::{im, lens, Data, Lens};
+use druid::{im, lens, Data, Lens, LensExt};
 
 #[derive(Clone, Data, Lens)]
 pub struct AppAction {
@@ -28,6 +28,33 @@ impl FocusableResult {
     pub fn select_left_action(&mut self) {
         self.focused_action = self.focused_action.max(1) - 1;
     }
+    pub fn get_actions_with_focused_lens() -> impl Lens<Self, im::Vector<(AppAction, bool)>> {
+        lens::Identity.map(
+            // Expose shared data with children data
+            |result: &Self| {
+                result
+                    .entry
+                    .actions
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(id, action)| (action, id == result.focused_action && result.focused))
+                    .collect::<im::Vector<_>>()
+            },
+            |_result: &mut Self, _x: im::Vector<(AppAction, bool)>| {},
+        )
+    }
+    pub fn launch_selected_action(&self) {
+        if let Ok(_c) = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&self.entry.actions[self.focused_action].command)
+            .spawn()
+        {
+            std::process::exit(0);
+        } else {
+            panic!("Unable to start app");
+        }
+    }
 }
 
 #[derive(Clone, Data, Lens)]
@@ -37,20 +64,8 @@ pub struct VonalState {
     pub results: im::Vector<FocusableResult>,
 }
 
-fn launch_app_entry(entry: &AppEntry) {
-    if let Ok(_c) = Command::new("/bin/sh")
-        .arg("-c")
-        .arg(&entry.actions[0].command)
-        .spawn()
-    {
-        std::process::exit(0);
-    } else {
-        panic!("Unable to start app");
-    }
-}
-
 impl VonalState {
-    pub fn get_old_focused_id(&self) -> Option<usize> {
+    pub fn get_focused_id(&self) -> Option<usize> {
         self.results
             .iter()
             .enumerate()
@@ -58,18 +73,18 @@ impl VonalState {
             .map(|(id, _)| id)
     }
 
-    pub fn get_old_focused_mut(&mut self) -> Option<&mut FocusableResult> {
-        let id = self.get_old_focused_id()?;
+    pub fn get_focused_mut(&mut self) -> Option<&mut FocusableResult> {
+        let id = self.get_focused_id()?;
         Some(&mut self.results[id])
     }
 
-    pub fn get_old_focused(&self) -> Option<&FocusableResult> {
-        let id = self.get_old_focused_id()?;
+    pub fn get_focused(&self) -> Option<&FocusableResult> {
+        let id = self.get_focused_id()?;
         Some(&self.results[id])
     }
 
     pub fn select_next_result(&mut self) {
-        let old_focused = self.get_old_focused_id();
+        let old_focused = self.get_focused_id();
         if let Some(old_focused) = old_focused {
             let next_focused = old_focused + 1;
             if next_focused < self.results.len() {
@@ -82,7 +97,7 @@ impl VonalState {
     }
 
     pub fn select_previous_result(&mut self) {
-        let old_focused = self.get_old_focused_id();
+        let old_focused = self.get_focused_id();
         match old_focused {
             None | Some(0) => {}
             Some(old_focused) => {
@@ -96,21 +111,20 @@ impl VonalState {
     }
 
     pub fn select_right_action(&mut self) {
-        if let Some(old_focused) = self.get_old_focused_mut() {
+        if let Some(old_focused) = self.get_focused_mut() {
             old_focused.select_right_action()
         }
     }
 
     pub fn select_left_action(&mut self) {
-        if let Some(old_focused) = self.get_old_focused_mut() {
+        if let Some(old_focused) = self.get_focused_mut() {
             old_focused.select_left_action()
         }
     }
 
     pub fn launch_selected(&self) {
-        if let Some(focused) = self.get_old_focused() {
-            launch_app_entry(&focused.entry)
-        }
+        self.get_focused()
+            .map(|focused| focused.launch_selected_action());
     }
 }
 

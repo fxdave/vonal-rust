@@ -1,14 +1,15 @@
 mod plugins;
 mod state;
-use crate::state::{AppEntry, FocusableResult};
+
+use crate::state::FocusableResult;
 use druid::{
     theme::{BACKGROUND_LIGHT, LABEL_COLOR, TEXTBOX_BORDER_WIDTH, WINDOW_BACKGROUND_COLOR},
     widget::{
-        Controller, CrossAxisAlignment, Flex, Label, List, MainAxisAlignment, Padding, Painter,
-        Svg, SvgData, TextBox,
+        Controller, CrossAxisAlignment, Flex, Label, List, MainAxisAlignment, Padding, Svg,
+        SvgData, TextBox,
     },
-    AppLauncher, Code, Color, Env, Event, EventCtx, Insets, LensExt, PlatformError, RenderContext,
-    Widget, WidgetExt, WindowDesc,
+    AppLauncher, Code, Color, Env, Event, EventCtx, Insets, PlatformError, Widget, WidgetExt,
+    WindowDesc,
 };
 use plugins::Plugin;
 use state::{AppAction, VonalState};
@@ -90,34 +91,29 @@ fn main() -> Result<(), PlatformError> {
 }
 
 fn build_row() -> impl Widget<FocusableResult> {
-    let row_background_painter = Painter::new(|ctx, item: &FocusableResult, _| {
-        let bounds = ctx.size().to_rect();
-        if item.focused {
-            ctx.fill(bounds, &Color::rgba(1., 1., 1., 0.26));
-        }
-    });
-
     let launch_text = Label::new("Launch").with_text_color(Color::rgba(1., 1., 1., 0.5));
 
     let actions = List::new(|| {
         Flex::column()
             .cross_axis_alignment(CrossAxisAlignment::Start)
-            .with_child(Label::new(|item: &AppAction, _env: &_| item.name.clone()))
-            .with_child(Label::new(|item: &AppAction, _env: &_| {
-                item.command.clone()
+            .with_child(Label::new(|item: &(AppAction, bool), _env: &_| {
+                item.0.name.clone()
             }))
+            .with_child(Label::new(|item: &(AppAction, bool), _env: &_| {
+                item.0.command.clone()
+            }))
+            .env_scope(|env, app| {
+                if app.1 {
+                    env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 1.))
+                } else {
+                    env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 0.5))
+                }
+            })
     })
     .with_spacing(10.)
     .horizontal()
     .padding(Insets::new(10., 0., 0., 0.))
-    .lens(FocusableResult::entry.then(AppEntry::actions))
-    .env_scope(|env, app| {
-        if app.focused {
-            env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 1.))
-        } else {
-            env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 0.5))
-        }
-    });
+    .lens(FocusableResult::get_actions_with_focused_lens());
 
     Flex::row()
         .with_flex_child(launch_text, 0.)
@@ -125,7 +121,6 @@ fn build_row() -> impl Widget<FocusableResult> {
         .main_axis_alignment(MainAxisAlignment::Center)
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .padding(10.)
-        .background(row_background_painter)
 }
 
 fn build_ui() -> impl Widget<VonalState> {
