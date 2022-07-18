@@ -1,7 +1,8 @@
 mod plugins;
 mod state;
+use crate::state::{AppEntry, FocusableResult};
 use druid::{
-    theme::{BACKGROUND_LIGHT, TEXTBOX_BORDER_WIDTH, WINDOW_BACKGROUND_COLOR},
+    theme::{BACKGROUND_LIGHT, LABEL_COLOR, TEXTBOX_BORDER_WIDTH, WINDOW_BACKGROUND_COLOR},
     widget::{
         Controller, CrossAxisAlignment, Flex, Label, List, MainAxisAlignment, Padding, Painter,
         Svg, SvgData, TextBox,
@@ -11,9 +12,6 @@ use druid::{
 };
 use plugins::Plugin;
 use state::{AppAction, VonalState};
-use std::process::Command;
-
-use crate::state::{AppEntry, Focusable};
 
 struct DefaultFocusController;
 
@@ -49,61 +47,20 @@ impl<W: Widget<VonalState>> Controller<VonalState, W> for SearchController {
     ) {
         if let Event::KeyDown(e) = event {
             match e.code {
-                Code::ArrowDown => {
-                    let old_focused = state
-                        .results
-                        .iter()
-                        .enumerate()
-                        .find(|(_id, entry)| entry.focused)
-                        .map(|(id, _)| id);
-                    if let Some(old_focused) = old_focused {
-                        let next_focused = old_focused + 1;
-                        if next_focused < state.results.len() {
-                            state.results[old_focused].focused = false;
-                            state.results[next_focused].focused = true;
-                        }
-                    } else if state.results.len() > 0 {
-                        state.results[0].focused = true;
-                    }
-                }
-                Code::ArrowUp => {
-                    let old_focused = state
-                        .results
-                        .iter()
-                        .enumerate()
-                        .find(|(_id, entry)| entry.focused)
-                        .map(|(id, _)| id);
-                    match old_focused {
-                        None | Some(0) => {}
-                        Some(old_focused) => {
-                            let prev_focused = old_focused - 1;
-                            if prev_focused < state.results.len() {
-                                state.results[old_focused].focused = false;
-                                state.results[prev_focused].focused = true;
-                            }
-                        }
-                    }
-                }
-                Code::Enter => {
-                    let focused = state
-                        .results
-                        .iter()
-                        .enumerate()
-                        .find(|(_id, entry)| entry.focused)
-                        .map(|(id, _)| id);
-
-                    if let Some(focused) = focused {
-                        launch_app_entry(&state.results[focused].focusable)
-                    }
-                }
+                Code::ArrowDown => state.select_next_result(),
+                Code::ArrowLeft => state.select_left_action(),
+                Code::ArrowRight => state.select_right_action(),
+                Code::ArrowUp => state.select_previous_result(),
+                Code::Enter => state.launch_selected(),
                 _ => {
                     state.results = self
                         .application_launcher_plugin
                         .search(&state.query)
                         .into_iter()
-                        .map(|entry| Focusable {
-                            focusable: entry,
+                        .map(|entry| FocusableResult {
+                            entry: entry,
                             focused: false,
+                            focused_action: 0,
                         })
                         .collect();
                 }
@@ -132,8 +89,8 @@ fn main() -> Result<(), PlatformError> {
     Ok(())
 }
 
-fn build_row() -> impl Widget<Focusable<AppEntry>> {
-    let row_background_painter = Painter::new(|ctx, item: &Focusable<AppEntry>, _| {
+fn build_row() -> impl Widget<FocusableResult> {
+    let row_background_painter = Painter::new(|ctx, item: &FocusableResult, _| {
         let bounds = ctx.size().to_rect();
         if item.focused {
             ctx.fill(bounds, &Color::rgba(1., 1., 1., 0.26));
@@ -153,7 +110,14 @@ fn build_row() -> impl Widget<Focusable<AppEntry>> {
     .with_spacing(10.)
     .horizontal()
     .padding(Insets::new(10., 0., 0., 0.))
-    .lens(Focusable::<AppEntry>::focusable.then(AppEntry::actions));
+    .lens(FocusableResult::entry.then(AppEntry::actions))
+    .env_scope(|env, app| {
+        if app.focused {
+            env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 1.))
+        } else {
+            env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 0.5))
+        }
+    });
 
     Flex::row()
         .with_flex_child(launch_text, 0.)
@@ -162,18 +126,6 @@ fn build_row() -> impl Widget<Focusable<AppEntry>> {
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .padding(10.)
         .background(row_background_painter)
-}
-
-fn launch_app_entry(entry: &AppEntry) {
-    if let Ok(_c) = Command::new("/bin/sh")
-        .arg("-c")
-        .arg(&entry.actions[0].command)
-        .spawn()
-    {
-        std::process::exit(0);
-    } else {
-        panic!("Unable to start app");
-    }
 }
 
 fn build_ui() -> impl Widget<VonalState> {

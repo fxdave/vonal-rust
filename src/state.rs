@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use druid::{im, lens, Data, Lens};
 
 #[derive(Clone, Data, Lens)]
@@ -12,16 +14,104 @@ pub struct AppEntry {
 }
 
 #[derive(Clone, Lens, Data)]
-pub struct Focusable<T> {
-    pub focusable: T,
-    pub focused: bool
+pub struct FocusableResult {
+    pub entry: AppEntry,
+    pub focused: bool,
+    pub focused_action: usize,
+}
+
+impl FocusableResult {
+    pub fn select_right_action(&mut self) {
+        let length = self.entry.actions.len();
+        self.focused_action = (self.focused_action + 1).min(length);
+    }
+    pub fn select_left_action(&mut self) {
+        self.focused_action = self.focused_action.max(1) - 1;
+    }
 }
 
 #[derive(Clone, Data, Lens)]
 pub struct VonalState {
     #[lens(name = "query_lens")]
     pub query: String,
-    pub results: im::Vector<Focusable<AppEntry>>,
+    pub results: im::Vector<FocusableResult>,
+}
+
+fn launch_app_entry(entry: &AppEntry) {
+    if let Ok(_c) = Command::new("/bin/sh")
+        .arg("-c")
+        .arg(&entry.actions[0].command)
+        .spawn()
+    {
+        std::process::exit(0);
+    } else {
+        panic!("Unable to start app");
+    }
+}
+
+impl VonalState {
+    pub fn get_old_focused_id(&self) -> Option<usize> {
+        self.results
+            .iter()
+            .enumerate()
+            .find(|(_id, entry)| entry.focused)
+            .map(|(id, _)| id)
+    }
+
+    pub fn get_old_focused_mut(&mut self) -> Option<&mut FocusableResult> {
+        let id = self.get_old_focused_id()?;
+        Some(&mut self.results[id])
+    }
+
+    pub fn get_old_focused(&self) -> Option<&FocusableResult> {
+        let id = self.get_old_focused_id()?;
+        Some(&self.results[id])
+    }
+
+    pub fn select_next_result(&mut self) {
+        let old_focused = self.get_old_focused_id();
+        if let Some(old_focused) = old_focused {
+            let next_focused = old_focused + 1;
+            if next_focused < self.results.len() {
+                self.results[old_focused].focused = false;
+                self.results[next_focused].focused = true;
+            }
+        } else if self.results.len() > 0 {
+            self.results[0].focused = true;
+        }
+    }
+
+    pub fn select_previous_result(&mut self) {
+        let old_focused = self.get_old_focused_id();
+        match old_focused {
+            None | Some(0) => {}
+            Some(old_focused) => {
+                let prev_focused = old_focused - 1;
+                if prev_focused < self.results.len() {
+                    self.results[old_focused].focused = false;
+                    self.results[prev_focused].focused = true;
+                }
+            }
+        }
+    }
+
+    pub fn select_right_action(&mut self) {
+        if let Some(old_focused) = self.get_old_focused_mut() {
+            old_focused.select_right_action()
+        }
+    }
+
+    pub fn select_left_action(&mut self) {
+        if let Some(old_focused) = self.get_old_focused_mut() {
+            old_focused.select_left_action()
+        }
+    }
+
+    pub fn launch_selected(&self) {
+        if let Some(focused) = self.get_old_focused() {
+            launch_app_entry(&focused.entry)
+        }
+    }
 }
 
 impl VonalState {
