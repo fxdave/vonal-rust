@@ -3,7 +3,7 @@ mod state;
 
 use crate::state::FocusableResult;
 use druid::{
-    theme::{BACKGROUND_LIGHT, LABEL_COLOR, TEXTBOX_BORDER_WIDTH, WINDOW_BACKGROUND_COLOR},
+    theme::{BACKGROUND_LIGHT, TEXTBOX_BORDER_WIDTH, TEXT_COLOR, WINDOW_BACKGROUND_COLOR},
     widget::{
         Controller, CrossAxisAlignment, Flex, Label, List, MainAxisAlignment, Padding, Svg,
         SvgData, TextBox,
@@ -13,25 +13,6 @@ use druid::{
 };
 use plugins::Plugin;
 use state::{AppAction, VonalState};
-
-struct DefaultFocusController;
-
-impl<W: Widget<VonalState>> Controller<VonalState, W> for DefaultFocusController {
-    fn event(
-        &mut self,
-        child: &mut W,
-        ctx: &mut EventCtx,
-        event: &Event,
-        data: &mut VonalState,
-        env: &Env,
-    ) {
-        if let Event::WindowConnected = event {
-            ctx.request_focus()
-        }
-
-        child.event(ctx, event, data, env)
-    }
-}
 
 struct SearchController {
     application_launcher_plugin: plugins::application_launcher::ApplicationLauncherPlugin,
@@ -46,6 +27,9 @@ impl<W: Widget<VonalState>> Controller<VonalState, W> for SearchController {
         state: &mut VonalState,
         env: &Env,
     ) {
+        if let Event::WindowConnected = event {
+            ctx.request_focus()
+        }
         if let Event::KeyDown(e) = event {
             match e.code {
                 Code::ArrowDown => state.select_next_result(),
@@ -74,14 +58,16 @@ impl<W: Widget<VonalState>> Controller<VonalState, W> for SearchController {
 fn main() -> Result<(), PlatformError> {
     let state = VonalState::new();
 
-    let window = WindowDesc::new(build_ui)
+    let window = WindowDesc::new(build_ui())
         .window_size((800., 400.))
         .resizable(false)
         .title("Vonal");
 
-    AppLauncher::with_window(window)
+    let launcher = AppLauncher::with_window(window);
+
+    launcher
         .configure_env(|env, _| {
-            env.set(TEXTBOX_BORDER_WIDTH, 0);
+            env.set(TEXTBOX_BORDER_WIDTH, 0.);
             env.set(WINDOW_BACKGROUND_COLOR, Color::BLACK);
             env.set(BACKGROUND_LIGHT, Color::BLACK);
         })
@@ -104,9 +90,9 @@ fn build_row() -> impl Widget<FocusableResult> {
             }))
             .env_scope(|env, app| {
                 if app.1 {
-                    env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 1.))
+                    env.set(TEXT_COLOR, Color::rgb(1., 1., 1.))
                 } else {
-                    env.set(LABEL_COLOR, Color::rgba(1., 1., 1., 0.5))
+                    env.set(TEXT_COLOR, Color::rgb(0.5, 0.5, 0.5))
                 }
             })
     })
@@ -116,7 +102,7 @@ fn build_row() -> impl Widget<FocusableResult> {
     .lens(FocusableResult::get_actions_with_focused_lens());
 
     Flex::row()
-        .with_flex_child(launch_text, 0.)
+        .with_flex_child(launch_text, 0.1)
         .with_flex_child(actions, 1.)
         .main_axis_alignment(MainAxisAlignment::Center)
         .cross_axis_alignment(CrossAxisAlignment::Center)
@@ -134,7 +120,6 @@ fn build_ui() -> impl Widget<VonalState> {
         .with_placeholder("Try some keyword...")
         .with_text_size(22.0)
         .lens(VonalState::query_lens)
-        .controller(DefaultFocusController)
         .controller(SearchController {
             application_launcher_plugin:
                 plugins::application_launcher::ApplicationLauncherPlugin::load(),
@@ -150,7 +135,7 @@ fn build_ui() -> impl Widget<VonalState> {
                 Flex::row()
                     .main_axis_alignment(MainAxisAlignment::Center)
                     .cross_axis_alignment(CrossAxisAlignment::Center)
-                    .with_flex_child(image, 0.0)
+                    .with_flex_child(image, 0.1)
                     .with_flex_child(search_box, 1.0),
             )
             .with_spacer(10.0)
