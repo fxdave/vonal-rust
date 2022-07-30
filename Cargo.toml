@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 freedesktop-desktop-entry = "0.5.0"
+regex = "1.6.0"
 
 [dependencies.druid]
 git = "https://github.com/linebender/druid"

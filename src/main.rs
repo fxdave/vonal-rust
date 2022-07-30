@@ -1,21 +1,32 @@
 mod plugins;
 mod state;
 
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+};
+
 use crate::state::FocusableResult;
 use druid::{
+    im,
     theme::{BACKGROUND_LIGHT, TEXTBOX_BORDER_WIDTH, TEXT_COLOR, WINDOW_BACKGROUND_COLOR},
     widget::{
         Controller, CrossAxisAlignment, Flex, Label, List, MainAxisAlignment, Padding, Svg,
         SvgData, TextBox,
     },
-    AppLauncher, Code, Color, Env, Event, EventCtx, Insets, PlatformError, Widget, WidgetExt,
-    WindowDesc,
+    AppDelegate, AppLauncher, Code, Color, Command, DelegateCtx, Env, Event, EventCtx, Handled,
+    Insets, PlatformError, Selector, Target, Widget, WidgetExt, WindowDesc,
 };
-use plugins::Plugin;
+use plugins::{calculator::CalculatorPlugin, Plugin};
 use state::{AppAction, VonalState};
 
+const FINISH_SLOW_FUNCTION: Selector<im::Vector<FocusableResult>> =
+    Selector::new("finish_slow_function");
+
 struct SearchController {
-    application_launcher_plugin: plugins::application_launcher::ApplicationLauncherPlugin,
+    application_launcher_plugin:
+        Arc<Mutex<plugins::application_launcher::ApplicationLauncherPlugin>>,
+    calculator_plugin: Arc<Mutex<plugins::calculator::CalculatorPlugin>>,
 }
 
 impl<W: Widget<VonalState>> Controller<VonalState, W> for SearchController {
@@ -38,20 +49,56 @@ impl<W: Widget<VonalState>> Controller<VonalState, W> for SearchController {
                 Code::ArrowUp => state.select_previous_result(),
                 Code::Enter => state.launch_selected(),
                 _ => {
-                    state.results = self
-                        .application_launcher_plugin
-                        .search(&state.query)
-                        .into_iter()
-                        .map(|entry| FocusableResult {
-                            entry: entry,
-                            focused: false,
-                            focused_action: 0,
-                        })
-                        .collect();
+                    let application_launcher_plugin = self.application_launcher_plugin.clone();
+                    let calculator_plugin = self.calculator_plugin.clone();
+                    let query = state.query.clone();
+                    let event_sink = ctx.get_external_handle();
+                    thread::spawn(move || {
+                        let launcher_results = application_launcher_plugin
+                            .try_lock()
+                            .map(|plugin| plugin.search(&query))
+                            .unwrap_or(im::vector![])
+                            .into_iter();
+                        let calculator_results = calculator_plugin
+                            .try_lock()
+                            .map(|plugin| plugin.search(&query))
+                            .unwrap_or(im::vector![])
+                            .into_iter();
+                        let results = calculator_results
+                            .chain(launcher_results)
+                            .map(|entry| FocusableResult {
+                                entry: entry,
+                                focused: false,
+                                focused_action: 0,
+                            })
+                            .collect::<im::Vector<_>>();
+                        event_sink.submit_command(FINISH_SLOW_FUNCTION, results, Target::Auto)
+                    });
                 }
             }
         }
         child.event(ctx, event, state, env)
+    }
+}
+
+struct Delegate;
+
+impl AppDelegate<VonalState> for Delegate {
+    fn command(
+        &mut self,
+        _ctx: &mut DelegateCtx,
+        _target: Target,
+        cmd: &Command,
+        data: &mut VonalState,
+        _env: &Env,
+    ) -> Handled {
+        if let Some(results) = cmd.get(FINISH_SLOW_FUNCTION) {
+            // If the command we received is `FINISH_SLOW_FUNCTION` handle the payload.
+            data.results = results.clone();
+            Handled::Yes
+        } else {
+            Handled::No
+        }
     }
 }
 
@@ -63,9 +110,8 @@ fn main() -> Result<(), PlatformError> {
         .resizable(false)
         .title("Vonal");
 
-    let launcher = AppLauncher::with_window(window);
-
-    launcher
+    AppLauncher::with_window(window)
+        .delegate(Delegate)
         .configure_env(|env, _| {
             env.set(TEXTBOX_BORDER_WIDTH, 0.);
             env.set(WINDOW_BACKGROUND_COLOR, Color::BLACK);
@@ -121,8 +167,10 @@ fn build_ui() -> impl Widget<VonalState> {
         .with_text_size(22.0)
         .lens(VonalState::query_lens)
         .controller(SearchController {
-            application_launcher_plugin:
+            application_launcher_plugin: Arc::new(Mutex::new(
                 plugins::application_launcher::ApplicationLauncherPlugin::load(),
+            )),
+            calculator_plugin: Arc::new(Mutex::new(CalculatorPlugin::load())),
         })
         .expand_width();
 
