@@ -9,13 +9,10 @@ mod plugins;
 
 fn main() {
     let options = eframe::NativeOptions {
+        resizable: false,
         ..Default::default()
     };
-    eframe::run_native(
-        "Vonal",
-        options,
-        Box::new(|_cc| Box::new(MyApp::default())),
-    );
+    eframe::run_native("Vonal", options, Box::new(|_cc| Box::new(MyApp::default())));
 }
 
 struct MyApp {
