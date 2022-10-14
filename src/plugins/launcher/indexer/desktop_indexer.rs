@@ -1,9 +1,6 @@
-use std::fs;
-
-use crate::state::AppAction;
-
-use super::traits::{AppIndex, IndexApps};
+use super::traits::{AppAction, AppIndex, IndexApps};
 use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter};
+use std::fs;
 
 /**
  * Creates application indexes from .desktop files

@@ -1,5 +1,12 @@
-use crate::state::AppAction;
 
+#[derive(Clone)]
+pub struct AppAction {
+    pub name: String,
+    pub command: String,
+}
+
+// TODO: remove clone
+#[derive(Clone)]
 pub struct AppIndex {
     pub exec: String,
     pub name: String,
