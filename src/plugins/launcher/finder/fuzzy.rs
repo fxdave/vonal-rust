@@ -60,8 +60,8 @@ fn get_without_uncommon_chars(query: &str, name: &str) -> (String, usize) {
 
 /// This struct represents the found segments matching to the query, and a position number for marking where was the first match.
 struct SegmentsInfo {
-    first_match: u64,
-    missmatch_count: u64,
+    first_match: usize,
+    missmatch_count: usize,
     segments: Vec<String>,
 }
 
@@ -76,10 +76,10 @@ impl Clone for SegmentsInfo {
 }
 
 /// Matches query with the name and returns the `SegmentsInfo`
-fn get_matching_segments_from_index(query: &str, name: &str, from: u64) -> SegmentsInfo {
+fn get_matching_segments_from_index(query: &str, name: &str, from: usize) -> SegmentsInfo {
     let mut query_iter = query.chars();
     #[allow(clippy::cast_possible_truncation)]
-    let mut name_iter = name[from as usize..].chars();
+    let mut name_iter = name[from..].chars();
     let mut first_match = 0;
     let mut name_counter = 0;
 
@@ -125,14 +125,14 @@ fn get_matching_segments_from_index(query: &str, name: &str, from: u64) -> Segme
 
 /// There are multiple `SegmentsInfo` to choose depending on where did we start the matcher.
 /// This function tries to give a goodness value which we can use to compare multiple `SegmentsInfo`
-fn calculate_goodness(segments: &[String]) -> u64 {
+fn calculate_goodness(segments: &[String]) -> usize {
     let overall_length = segments.iter().fold(0, |acc, x| acc + x.len());
 
     let len_of_biggest_segment = segments
         .iter()
         .fold(0, |acc, x| if x.len() > acc { x.len() } else { acc });
 
-    (len_of_biggest_segment * 2 + overall_length) as u64
+    len_of_biggest_segment * 2 + overall_length
 }
 
 /// Starts the matching from multiple positions and returns the best segments
@@ -174,12 +174,12 @@ fn calculate_common_char_goodness(
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn calculate_missmatch_goodness(number_of_missmatch: u64) -> f64 {
+fn calculate_missmatch_goodness(number_of_missmatch: usize) -> f64 {
     1.0 / (number_of_missmatch as f64 + 1.0)
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn calculate_first_match_goodness(first_match: u64, max_name_length: usize) -> f64 {
+fn calculate_first_match_goodness(first_match: usize, max_name_length: usize) -> f64 {
     1f64 - first_match as f64 / max_name_length as f64 // [0;1]
 }
 
