@@ -52,7 +52,16 @@ impl eframe::App for MyApp {
             ..Default::default()
         };
 
+        if ctx.input().key_pressed(egui::Key::Escape) {
+            if self.query.len() > 0 {
+                self.query = String::new()
+            } else {
+                std::process::exit(0)
+            }
+        }
         self.plugin_manager.before_search(&ctx);
+        let is_control = ctx.input().key_pressed(egui::Key::ArrowLeft)
+            || ctx.input().key_pressed(egui::Key::ArrowRight);
 
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -60,8 +69,10 @@ impl eframe::App for MyApp {
                     [50., 50.],
                     Image::new(self.prompt_icon.texture_id(ctx), vec2(15., 15.)),
                 );
+
                 ui.add(
                     TextEdit::singleline(&mut self.query)
+                        .interactive(!is_control)
                         .id(Id::new(SEARCH_INPUT_ID))
                         .frame(false)
                         .hint_text("Search something ...")
@@ -69,6 +80,11 @@ impl eframe::App for MyApp {
                         .margin(Vec2 { x: 0., y: 15. })
                         .desired_width(f32::INFINITY),
                 );
+                if let Some(mut state) = TextEdit::load_state(ui.ctx(), Id::new(SEARCH_INPUT_ID)) {
+                    let ccursor = egui::text::CCursor::new(self.query.len());
+                    state.set_ccursor_range(Some(egui::text::CCursorRange::one(ccursor)));
+                    state.store(ui.ctx(), Id::new(SEARCH_INPUT_ID));
+                }
                 ui.memory().request_focus(Id::new(SEARCH_INPUT_ID));
             });
 
