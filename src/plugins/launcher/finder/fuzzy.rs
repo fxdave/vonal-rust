@@ -31,7 +31,7 @@ impl PartialEq for InCaseSensitiveChar {
 
 impl Hash for InCaseSensitiveChar {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.to_ascii_lowercase().hash(state)
+        self.0.to_ascii_lowercase().hash(state);
     }
 }
 
@@ -44,7 +44,8 @@ impl Eq for InCaseSensitiveChar {}
 /// but this would give us only one character long match: the `["c"]`.
 /// Instead of this, we will find `comium` so we will get `["c", "omium"]`.
 /// So in this example, this function makes `comium` from `clomium`.
-fn get_without_uncommon_chars(query: &str, name: &str) -> (String, u64) {
+#[allow(clippy::redundant_closure)]
+fn get_without_uncommon_chars(query: &str, name: &str) -> (String, usize) {
     let a: HashSet<InCaseSensitiveChar> = query.chars().map(|x| InCaseSensitiveChar(x)).collect();
     let b: HashSet<InCaseSensitiveChar> = name.chars().map(|x| InCaseSensitiveChar(x)).collect();
 
@@ -53,7 +54,7 @@ fn get_without_uncommon_chars(query: &str, name: &str) -> (String, u64) {
     let mut without_uncommon_chars = query.to_string();
     without_uncommon_chars.retain(|c| !difference.contains(&InCaseSensitiveChar(c)));
 
-    let number_of_deleted_chars: u64 = query.len() as u64 - without_uncommon_chars.len() as u64;
+    let number_of_deleted_chars = query.len() - without_uncommon_chars.len();
     (without_uncommon_chars, number_of_deleted_chars)
 }
 
@@ -74,21 +75,22 @@ impl Clone for SegmentsInfo {
     }
 }
 
-/// Matches query with the name and returns the SegmentsInfo
+/// Matches query with the name and returns the `SegmentsInfo`
 fn get_matching_segments_from_index(query: &str, name: &str, from: u64) -> SegmentsInfo {
     let mut query_iter = query.chars();
-    let mut name_iter = (&name[from as usize..]).clone().chars();
+    #[allow(clippy::cast_possible_truncation)]
+    let mut name_iter = name[from as usize..].chars();
     let mut first_match = 0;
     let mut name_counter = 0;
 
     let mut segments: Vec<String> = vec![];
 
-    let mut nextq = query_iter.next();
-    let mut nextn = name_iter.next();
+    let mut next_query_char = query_iter.next();
+    let mut next_name_char = name_iter.next();
 
     let mut missmatch_counter = 0;
 
-    while let (Some(q), Some(n)) = (nextq, nextn) {
+    while let (Some(q), Some(n)) = (next_query_char, next_name_char) {
         if q.to_ascii_lowercase() == n.to_ascii_lowercase() {
             first_match = if first_match == 0 {
                 name_counter
@@ -103,20 +105,15 @@ fn get_matching_segments_from_index(query: &str, name: &str, from: u64) -> Segme
                 None => segments.push(q.to_string()),
             };
 
-            nextq = query_iter.next();
-            nextn = name_iter.next();
-            name_counter += 1;
-        } else {
-            if let Some(s) = segments.last() {
-                if s != "" {
-                    segments.push(String::from(""));
-                }
-                missmatch_counter += 1;
+            next_query_char = query_iter.next();
+        } else if let Some(s) = segments.last() {
+            if !s.is_empty() {
+                segments.push(String::from(""));
             }
-
-            nextn = name_iter.next();
-            name_counter += 1;
+            missmatch_counter += 1;
         }
+        next_name_char = name_iter.next();
+        name_counter += 1;
     }
 
     SegmentsInfo {
@@ -126,9 +123,9 @@ fn get_matching_segments_from_index(query: &str, name: &str, from: u64) -> Segme
     }
 }
 
-/// There are multiple SegmentsInfo to choose depending on where did we start the matcher.
-/// This function tries to give a goodness value which we can use to compare multiple SegmentsInfo
-fn calculate_goodness(segments: &Vec<String>) -> u64 {
+/// There are multiple `SegmentsInfo` to choose depending on where did we start the matcher.
+/// This function tries to give a goodness value which we can use to compare multiple `SegmentsInfo`
+fn calculate_goodness(segments: &[String]) -> u64 {
     let overall_length = segments.iter().fold(0, |acc, x| acc + x.len());
 
     let len_of_biggest_segment = segments
@@ -140,13 +137,13 @@ fn calculate_goodness(segments: &Vec<String>) -> u64 {
 
 /// Starts the matching from multiple positions and returns the best segments
 fn get_matching_segments(query: &str, name: &str) -> SegmentsInfo {
-    let mut segments_description = get_matching_segments_from_index(&query, &name, 0);
+    let mut segments_description = get_matching_segments_from_index(query, name, 0);
     let mut best_segments_description = segments_description.clone();
     let mut best_goodness = calculate_goodness(&best_segments_description.segments);
 
-    while segments_description.segments.len() != 0 {
+    while !segments_description.segments.is_empty() {
         segments_description =
-            get_matching_segments_from_index(&query, &name, segments_description.first_match + 1);
+            get_matching_segments_from_index(query, name, segments_description.first_match + 1);
 
         let goodness = calculate_goodness(&segments_description.segments);
         if goodness > best_goodness {
@@ -158,6 +155,7 @@ fn get_matching_segments(query: &str, name: &str) -> SegmentsInfo {
     best_segments_description
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn calculate_segment_goodness(segments: &Vec<String>, query_length: usize) -> f64 {
     let segments_length: usize = segments.iter().fold(0usize, |acc, s| acc + s.len());
     let segments_length_goodness: f64 = segments_length as f64 / query_length as f64; // [0,1]
@@ -165,8 +163,9 @@ fn calculate_segment_goodness(segments: &Vec<String>, query_length: usize) -> f6
     segments_length_goodness * segments_fragment_goodness
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn calculate_common_char_goodness(
-    number_of_deleted_chars: u64,
+    number_of_deleted_chars: usize,
     modified_query_length: usize,
 ) -> f64 {
     let del: f64 = number_of_deleted_chars as f64; // deleted chars
@@ -174,19 +173,23 @@ fn calculate_common_char_goodness(
     (ol / (del + 1.0)) / ol // (0;1]
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn calculate_missmatch_goodness(number_of_missmatch: u64) -> f64 {
     1.0 / (number_of_missmatch as f64 + 1.0)
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn calculate_first_match_goodness(first_match: u64, max_name_length: usize) -> f64 {
     1f64 - first_match as f64 / max_name_length as f64 // [0;1]
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn calculate_length_goodness(name_length: usize) -> f64 {
     1f64 / name_length as f64
 }
 
 /// Represents some information about the final result which can be used to sort our dataset
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub struct FuzzyInfo {
     pub segments: Vec<String>,
@@ -195,31 +198,31 @@ pub struct FuzzyInfo {
 
 const MAX_NAME_LENGTH: usize = 127;
 
-/// # The entry point of getting the FuzzyInfo.
+/// # The entry point of getting the `FuzzyInfo`.
 ///
 /// This will reduce the query by uncommon chars.
 /// After reducing the query, this will find **sequential** matching segments.
 /// For e.g: We want to match `clomium` with `chromium`, this will give the segments: `["c", "omium"]`
 ///
 pub fn get_fuzzy_info(query: &str, name: &str) -> FuzzyInfo {
-    let (query, number_of_deleted_chars) = get_without_uncommon_chars(&query, &name);
+    let (query, number_of_deleted_chars) = get_without_uncommon_chars(query, name);
 
     let new_length = min(name.len(), MAX_NAME_LENGTH);
     let name = &name[..new_length].to_owned();
 
-    if query.len() == 0 || name.len() == 0 {
+    if query.is_empty() || name.is_empty() {
         return FuzzyInfo {
             segments: vec![],
             fitness: 0f64,
         };
     }
 
-    let segments_info = get_matching_segments(&query, &name);
+    let segments_info = get_matching_segments(&query, name);
     let first_match_goodness =
         calculate_first_match_goodness(segments_info.first_match, MAX_NAME_LENGTH);
     let segment_goodness = calculate_segment_goodness(
         &segments_info.segments,
-        query.len() + number_of_deleted_chars as usize,
+        query.len() + number_of_deleted_chars,
     );
     let common_char_goodness = calculate_common_char_goodness(number_of_deleted_chars, query.len());
     let missmatch_goodness = calculate_missmatch_goodness(segments_info.missmatch_count);

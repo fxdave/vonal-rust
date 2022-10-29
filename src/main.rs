@@ -35,7 +35,7 @@ impl Default for MyApp {
     }
 }
 
-const SEARCH_INPUT_ID: &'static str = "#search_input";
+const SEARCH_INPUT_ID: &str = "#search_input";
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -44,7 +44,7 @@ impl eframe::App for MyApp {
         let mut style = (*ctx.style()).clone();
         style
             .text_styles
-            .insert(symbol_style.clone(), FontId::proportional(42.));
+            .insert(symbol_style, FontId::proportional(42.));
         ctx.set_style(style);
 
         let frame = egui::containers::Frame {
@@ -53,13 +53,12 @@ impl eframe::App for MyApp {
         };
 
         if ctx.input().key_pressed(egui::Key::Escape) {
-            if self.query.len() > 0 {
-                self.query = String::new()
-            } else {
+            if self.query.is_empty() {
                 std::process::exit(0)
             }
+            self.query = String::new();
         }
-        self.plugin_manager.before_search(&ctx);
+        self.plugin_manager.before_search(ctx);
         let is_control = ctx.input().key_pressed(egui::Key::ArrowLeft)
             || ctx.input().key_pressed(egui::Key::ArrowRight);
 
@@ -88,7 +87,7 @@ impl eframe::App for MyApp {
                 ui.memory().request_focus(Id::new(SEARCH_INPUT_ID));
             });
 
-            self.plugin_manager.search(&self.query, ui)
+            self.plugin_manager.search(&self.query, ui);
         });
     }
 }

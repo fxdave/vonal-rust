@@ -14,7 +14,7 @@ pub struct PluginManager {
 impl PluginManager {
     pub fn new() -> Self {
         Self {
-            plugins: vec![Box::new(launcher::LauncherPlugin::new())],
+            plugins: vec![Box::new(launcher::Launcher::new())],
         }
     }
 }
@@ -24,15 +24,15 @@ impl Plugin for PluginManager {
         ui.horizontal(|ui| {
             ui.add_space(15.);
             ui.vertical(|ui| {
-                for i in self.plugins.iter_mut() {
-                    i.search(query, ui)
+                for i in &mut self.plugins {
+                    i.search(query, ui);
                 }
             });
         });
     }
     fn before_search(&mut self, ctx: &Context) {
-        for i in self.plugins.iter_mut() {
-            i.before_search(ctx)
+        for i in &mut self.plugins {
+            i.before_search(ctx);
         }
     }
 }

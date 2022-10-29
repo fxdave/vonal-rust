@@ -12,14 +12,14 @@ use super::Plugin;
 mod finder;
 mod indexer;
 
-pub struct LauncherPlugin {
+pub struct Launcher {
     finder: finder::Finder,
     results: Vec<AppIndex>,
     focused_entry: usize,
     focused_entry_action: Option<usize>,
 }
 
-impl LauncherPlugin {
+impl Launcher {
     pub fn new() -> Self {
         let indices = indexer::Indexer::default().index();
         let finder = finder::Finder::new(indices);
@@ -110,7 +110,7 @@ impl LauncherPlugin {
     }
 
     fn select_prev(&mut self) {
-        self.focused_entry = 0i32.max(self.focused_entry as i32 - 1) as usize;
+        self.focused_entry = self.focused_entry.min(1) - 1;
         self.focused_entry_action = None;
     }
 
@@ -128,14 +128,13 @@ impl LauncherPlugin {
 
     fn select_prev_action(&mut self) {
         self.focused_entry_action = match self.focused_entry_action {
-            Some(0) => None,
+            Some(0) | None => None,
             Some(action) => Some(action - 1),
-            None => None,
         }
     }
 }
 
-impl Plugin for LauncherPlugin {
+impl Plugin for Launcher {
     fn search(&mut self, query: &str, ui: &mut Ui) {
         self.results = self
             .finder
@@ -181,7 +180,7 @@ impl Plugin for LauncherPlugin {
                         }
                     }
                 });
-            })
+            });
     }
 
     fn before_search(&mut self, ctx: &eframe::egui::Context) {

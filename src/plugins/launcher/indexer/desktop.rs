@@ -6,15 +6,15 @@ use std::fs;
  * Creates application indexes from .desktop files
  */
 #[derive(Default)]
-pub struct DesktopIndexer {}
-impl IndexApps for DesktopIndexer {
+pub struct Desktop {}
+impl IndexApps for Desktop {
     fn index(&self) -> Vec<AppIndex> {
         Iter::new(default_paths())
             .filter_map(|path| {
                 fs::read_to_string(&path)
                     .ok()
                     .as_ref()
-                    .and_then(|bytes| DesktopEntry::decode(&path, &bytes).ok())
+                    .and_then(|bytes| DesktopEntry::decode(&path, bytes).ok())
                     .and_then(|entry| {
                         let locale = None;
                         Some(AppIndex {
@@ -23,22 +23,18 @@ impl IndexApps for DesktopIndexer {
                             generic_name: entry.generic_name(locale).map(|s| s.to_string()),
                             actions: entry
                                 .actions()
-                                .and_then(|actions| {
-                                    Some(
-                                        actions
-                                            .split(';')
-                                            .flat_map(|action| {
-                                                Some(AppAction {
-                                                    name: entry
-                                                        .action_name(action, None)?
-                                                        .to_string(),
-                                                    command: entry.action_exec(action)?.to_string(),
-                                                })
+                                .map(|actions| {
+                                    actions
+                                        .split(';')
+                                        .filter_map(|action| {
+                                            Some(AppAction {
+                                                name: entry.action_name(action, None)?.to_string(),
+                                                command: entry.action_exec(action)?.to_string(),
                                             })
-                                            .collect::<Vec<_>>(),
-                                    )
+                                        })
+                                        .collect::<Vec<_>>()
                                 })
-                                .unwrap_or(vec![]),
+                                .unwrap_or_default(),
                         })
                     })
             })
