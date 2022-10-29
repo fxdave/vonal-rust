@@ -110,7 +110,7 @@ impl Launcher {
     }
 
     fn select_prev(&mut self) {
-        self.focused_entry = self.focused_entry.min(1) - 1;
+        self.focused_entry = self.focused_entry.max(1) - 1;
         self.focused_entry_action = None;
     }
 
