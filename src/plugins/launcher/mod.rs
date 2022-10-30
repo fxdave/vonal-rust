@@ -7,7 +7,7 @@ use std::process::Command;
 
 use self::indexer::traits::{AppIndex, IndexApps};
 
-use super::Plugin;
+use super::{Plugin, PluginFlowControl};
 
 mod finder;
 mod indexer;
@@ -135,7 +135,7 @@ impl Launcher {
 }
 
 impl Plugin for Launcher {
-    fn search(&mut self, query: &str, ui: &mut Ui) {
+    fn search(&mut self, query: &str, ui: &mut Ui) -> PluginFlowControl {
         self.results = self
             .finder
             .find(query)
@@ -181,6 +181,7 @@ impl Plugin for Launcher {
                     }
                 });
             });
+        PluginFlowControl::Continue
     }
 
     fn before_search(&mut self, ctx: &eframe::egui::Context) {

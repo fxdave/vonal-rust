@@ -4,7 +4,7 @@ use eframe::{
     CreationContext,
 };
 use egui_extras::RetainedImage;
-use plugins::{Plugin, PluginManager};
+use plugins::PluginManager;
 
 mod plugins;
 
