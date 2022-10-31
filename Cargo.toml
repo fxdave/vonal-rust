@@ -11,6 +11,7 @@ edition = "2021"
 eframe = "0.19.0"
 egui_glium = "0.19.0"
 egui_extras = { version = "0.19.0", features = ["svg"] }
+poll-promise = "0.2.0"
 
 # Launcher plugin:
 freedesktop-desktop-entry = "0.5.0"

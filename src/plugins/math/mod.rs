@@ -1,9 +1,25 @@
-use std::process::{Command, Stdio};
+use std::{
+    process::{Command, Stdio},
+    thread,
+};
+
+use eframe::epaint::Color32;
+use poll_promise::Promise;
 
 use super::{Plugin, PluginFlowControl};
 
 #[derive(Default)]
-pub struct Math {}
+pub struct Math {
+    promise: Option<Promise<CommandResult>>,
+    previous_query: String,
+    result: Option<CommandResult>,
+}
+
+#[derive(Clone)]
+struct CommandResult {
+    stdout: String,
+    stderr: String,
+}
 
 impl Math {
     pub fn new() -> Self {
@@ -17,26 +33,54 @@ impl Plugin for Math {
             return PluginFlowControl::Continue;
         }
 
-        let call = Command::new("python")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .arg("-c")
-            .arg(format!(
-                "from math import *\nprint({})",
-                query.strip_prefix('=').unwrap()
-            ))
-            .spawn();
-
-        match call {
-            Ok(child) => {
-                let out = child.wait_with_output().unwrap();
-                ui.label(String::from_utf8_lossy(&out.stdout));
-                ui.label(String::from_utf8_lossy(&out.stderr));
-            }
-            Err(err) => {
-                ui.label(format!("{:?}", err));
-            }
+        if self.previous_query != query {
+            self.promise = None;
         }
+
+        let ctx = ui.ctx().clone();
+        let query_stripped = query.strip_prefix('=').unwrap().to_string();
+        let promise = self.promise.get_or_insert_with(|| {
+            let (sender, promise) = Promise::new();
+            thread::spawn(move || {
+                let call = Command::new("python")
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .arg("-c")
+                    .arg(format!("from math import *\nprint({})", query_stripped))
+                    .spawn();
+
+                match call {
+                    Ok(child) => {
+                        let out = child.wait_with_output().unwrap();
+                        sender.send(CommandResult {
+                            stdout: String::from_utf8_lossy(&out.stdout).into(),
+                            stderr: String::from_utf8_lossy(&out.stderr).into(),
+                        });
+                        ctx.request_repaint();
+                    }
+                    Err(err) => {
+                        sender.send(CommandResult {
+                            stdout: String::new(),
+                            stderr: format!("{:?}", err),
+                        });
+                        ctx.request_repaint();
+                    }
+                }
+            });
+
+            promise
+        });
+
+        if let Some(result) = promise.ready() {
+            self.result = Some(result.clone());
+        }
+
+        if let Some(result) = &self.result {
+            ui.colored_label(Color32::from_white_alpha(255), result.stdout.clone());
+            ui.colored_label(Color32::from_white_alpha(128), result.stderr.clone());
+        }
+
+        self.previous_query = query.into();
         PluginFlowControl::Break
     }
 
