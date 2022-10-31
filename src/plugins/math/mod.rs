@@ -21,7 +21,10 @@ impl Plugin for Math {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .arg("-c")
-            .arg(format!("from math import *\nprint({})", query.strip_prefix('=').unwrap()))
+            .arg(format!(
+                "from math import *\nprint({})",
+                query.strip_prefix('=').unwrap()
+            ))
             .spawn();
 
         match call {
@@ -35,5 +38,16 @@ impl Plugin for Math {
             }
         }
         PluginFlowControl::Break
+    }
+
+    fn before_search(&mut self, query: &str, _ctx: &eframe::egui::Context) -> super::Preparation {
+        super::Preparation {
+            disable_cursor: false,
+            plugin_flow_control: if query.starts_with('=') {
+                PluginFlowControl::Break
+            } else {
+                PluginFlowControl::Continue
+            },
+        }
     }
 }

@@ -1,13 +1,15 @@
 use eframe::{
-    egui::{self, Button, Ui},
+    egui::{self, Button, Id, TextEdit, Ui},
     epaint::Color32,
 };
 use regex::Regex;
 use std::process::Command;
 
+use crate::SEARCH_INPUT_ID;
+
 use self::indexer::traits::{AppIndex, IndexApps};
 
-use super::{Plugin, PluginFlowControl};
+use super::{Plugin, PluginFlowControl, Preparation};
 
 mod finder;
 mod indexer;
@@ -181,24 +183,44 @@ impl Plugin for Launcher {
                     }
                 });
             });
+
+        // reset cursor to the end, so we can use arrow keys for navigation in results instead of in input
+        if let Some(mut state) = TextEdit::load_state(ui.ctx(), Id::new(SEARCH_INPUT_ID)) {
+            let ccursor = egui::text::CCursor::new(query.len());
+            state.set_ccursor_range(Some(egui::text::CCursorRange::one(ccursor)));
+            state.store(ui.ctx(), Id::new(SEARCH_INPUT_ID));
+        }
+
         PluginFlowControl::Continue
     }
 
-    fn before_search(&mut self, ctx: &eframe::egui::Context) {
+    #[allow(clippy::useless_let_if_seq)]
+    fn before_search(&mut self, _query: &str, ctx: &eframe::egui::Context) -> Preparation {
+        let mut disable_cursor = false;
         if ctx.input().key_pressed(egui::Key::ArrowDown) {
             self.select_next();
+            disable_cursor = true;
         }
         if ctx.input().key_pressed(egui::Key::ArrowUp) {
             self.select_prev();
+            disable_cursor = true;
         }
         if ctx.input().key_pressed(egui::Key::ArrowLeft) {
             self.select_prev_action();
+            disable_cursor = true;
         }
         if ctx.input().key_pressed(egui::Key::ArrowRight) {
             self.select_next_action();
+            disable_cursor = true;
         }
         if ctx.input().key_pressed(egui::Key::Enter) {
             self.launch_selected_action();
+            disable_cursor = true;
+        }
+
+        Preparation {
+            disable_cursor,
+            plugin_flow_control: PluginFlowControl::Continue,
         }
     }
 }

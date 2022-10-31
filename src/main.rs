@@ -53,13 +53,13 @@ impl eframe::App for MyApp {
         self.handle_escape(ctx);
 
         // Notify plugins before render
-        self.plugin_manager.before_search(ctx);
+        let preparation = self.plugin_manager.before_search(&self.query, ctx);
 
         // render window
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 self.render_mode_indicator_icon(ui, ctx);
-                self.render_search_bar(ui, ctx);
+                self.render_search_bar(ui, ctx, preparation.disable_cursor);
             });
 
             // Let plugins render their results
@@ -69,10 +69,10 @@ impl eframe::App for MyApp {
 }
 
 impl MyApp {
-    fn render_search_bar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn render_search_bar(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, disable_cursor: bool) {
         ui.add(
             TextEdit::singleline(&mut self.query)
-                .interactive(!Self::is_navigation_key_pressed(ctx))
+                .interactive(!disable_cursor)
                 .id(Id::new(SEARCH_INPUT_ID))
                 .frame(false)
                 .hint_text("Search something ...")
@@ -80,11 +80,6 @@ impl MyApp {
                 .margin(Vec2 { x: 0., y: 15. })
                 .desired_width(f32::INFINITY),
         );
-        if let Some(mut state) = TextEdit::load_state(ui.ctx(), Id::new(SEARCH_INPUT_ID)) {
-            let ccursor = egui::text::CCursor::new(self.query.len());
-            state.set_ccursor_range(Some(egui::text::CCursorRange::one(ccursor)));
-            state.store(ui.ctx(), Id::new(SEARCH_INPUT_ID));
-        }
         ui.memory().request_focus(Id::new(SEARCH_INPUT_ID));
     }
 
@@ -102,13 +97,5 @@ impl MyApp {
             }
             self.query = String::new();
         }
-    }
-
-    fn is_navigation_key_pressed(ctx: &egui::Context) -> bool {
-        let input = ctx.input();
-        input.key_pressed(egui::Key::ArrowLeft)
-            || input.key_pressed(egui::Key::ArrowRight)
-            || input.key_pressed(egui::Key::ArrowUp)
-            || input.key_pressed(egui::Key::ArrowDown)
     }
 }

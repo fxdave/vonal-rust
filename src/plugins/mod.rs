@@ -13,7 +13,12 @@ pub enum PluginFlowControl {
 
 pub trait Plugin {
     fn search(&mut self, query: &str, ui: &mut Ui) -> PluginFlowControl;
-    fn before_search(&mut self, _ctx: &Context) {}
+    fn before_search(&mut self, _query: &str, _ctx: &Context) -> Preparation {
+        Preparation {
+            disable_cursor: false,
+            plugin_flow_control: PluginFlowControl::Continue,
+        }
+    }
 }
 
 pub struct PluginManager {
@@ -44,9 +49,25 @@ impl PluginManager {
         });
     }
 
-    pub fn before_search(&mut self, ctx: &Context) {
+    pub fn before_search(&mut self, query: &str, ctx: &Context) -> Preparation {
+        let mut disable_cursor = false;
         for plugin in &mut self.plugins {
-            plugin.before_search(ctx);
+            let preparation = plugin.before_search(query, ctx);
+            disable_cursor |= preparation.disable_cursor;
+            if let PluginFlowControl::Break = preparation.plugin_flow_control {
+                break;
+            }
+        }
+        Preparation {
+            disable_cursor,
+            plugin_flow_control: PluginFlowControl::Break,
         }
     }
+}
+
+pub struct Preparation {
+    /// if you move the cursor you have to hide the cursor as well
+    /// otherwise the cursor will be jumping
+    pub disable_cursor: bool,
+    pub plugin_flow_control: PluginFlowControl,
 }
