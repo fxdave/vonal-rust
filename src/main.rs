@@ -115,22 +115,14 @@ fn create_display(
 
     gl_window.window().set_always_on_top(true);
     if let Some(monitor) = gl_window.window().current_monitor() {
-        gl_window.resize(PhysicalSize {
+        let size = PhysicalSize {
             width: monitor.size().width,
             height: 50,
-        });
-        gl_window.window().set_inner_size(PhysicalSize {
-            width: monitor.size().width,
-            height: 50,
-        });
-        gl_window.window().set_min_inner_size(Some(PhysicalSize {
-            width: monitor.size().width,
-            height: 50,
-        }));
-        gl_window.window().set_max_inner_size(Some(PhysicalSize {
-            width: monitor.size().width,
-            height: 50,
-        }));
+        };
+        gl_window.resize(size);
+        gl_window.window().set_inner_size(size);
+        gl_window.window().set_min_inner_size(Some(size));
+        gl_window.window().set_max_inner_size(Some(size));
         gl_window.window().set_outer_position(monitor.position());
     }
 
