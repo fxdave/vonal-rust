@@ -5,6 +5,7 @@ edition = "2021"
 features = ["launcher_plugin", "math_plugin"]
 
 [features]
+default = ["launcher_plugin", "math_plugin"]
 launcher_plugin = ["freedesktop-desktop-entry", "regex"]
 math_plugin = []
 
