@@ -1,6 +1,8 @@
 use egui::{Context, Ui};
 
+#[cfg(feature = "launcher_plugin")]
 mod launcher;
+#[cfg(feature = "math_plugin")]
 mod math;
 
 pub enum PluginFlowControl {
@@ -29,7 +31,9 @@ impl PluginManager {
     pub fn new() -> Self {
         Self {
             plugins: vec![
+                #[cfg(feature = "math_plugin")]
                 Box::new(math::Math::new()),
+                #[cfg(feature = "launcher_plugin")]
                 Box::new(launcher::Launcher::new()),
             ],
         }

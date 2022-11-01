@@ -2,16 +2,19 @@
 name = "vonal"
 version = "0.1.0"
 edition = "2021"
+features = ["launcher_plugin", "math_plugin"]
+
+[features]
+launcher_plugin = ["freedesktop-desktop-entry", "regex"]
+math_plugin = []
 
 [dependencies]
-
-# GUI:
 egui = "0.19.0"
 egui_extras = { version = "0.19.0", features = ["svg"] }
 poll-promise = "0.2.0"
 egui_glow = { version = "0.19.0", features = ["clipboard", "winit"] }
 glutin = "0.29"
 
-# Launcher plugin:
-freedesktop-desktop-entry = "0.5.0"
-regex = "1.6.0"
+# launcher_plugin
+freedesktop-desktop-entry = { version = "0.5.0", optional = true }
+regex = { version = "1.6.0", optional = true }
