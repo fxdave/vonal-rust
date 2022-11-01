@@ -1,4 +1,8 @@
-use glutin::dpi::PhysicalSize;
+use std::time::Instant;
+use glutin::{
+    dpi::PhysicalSize,
+    event::{Event, StartCause},
+};
 
 mod app;
 mod plugins;
@@ -7,79 +11,67 @@ fn main() {
     let event_loop = glutin::event_loop::EventLoopBuilder::with_user_event().build();
     let (gl_window, gl) = create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
-
-    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
-
+    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl);
     let mut app = app::App::new();
-    event_loop.run(move |event, _, control_flow| {
-        let mut redraw = || {
-            let quit = false;
-            let repaint_after = egui_glow.run(gl_window.window(), |egui_ctx| {
-                #[allow(clippy::cast_possible_truncation)]
-                egui_ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
-                app.update(egui_ctx, &gl_window);
-            });
-
-            *control_flow = if quit {
-                glutin::event_loop::ControlFlow::Exit
-            } else if repaint_after.is_zero() {
-                gl_window.window().request_redraw();
-                glutin::event_loop::ControlFlow::Poll
-            } else if let Some(repaint_after_instant) =
-                std::time::Instant::now().checked_add(repaint_after)
-            {
-                glutin::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
-            } else {
-                glutin::event_loop::ControlFlow::Wait
-            };
-
-            {
-                unsafe {
-                    use egui_glow::glow::HasContext as _;
-                    gl.clear(egui_glow::glow::COLOR_BUFFER_BIT);
-                }
-
-                // draw things behind egui here
-                egui_glow.paint(gl_window.window());
-
-                // draw things on top of egui here
-                gl_window.swap_buffers().unwrap();
-            }
-        };
-
-        match event {
-            glutin::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
-
-            glutin::event::Event::WindowEvent { event, .. } => {
-                use glutin::event::WindowEvent;
-                if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::RedrawRequested(_) => {
+            *control_flow = redraw(&mut app, &mut egui_glow, &gl_window);
+        }
+        Event::WindowEvent { event, .. } => {
+            use glutin::event::WindowEvent;
+            match event {
+                WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                     *control_flow = glutin::event_loop::ControlFlow::Exit;
                 }
-
-                if let glutin::event::WindowEvent::Resized(physical_size) = &event {
+                WindowEvent::Resized(ref physical_size) => {
                     gl_window.resize(*physical_size);
-                } else if let glutin::event::WindowEvent::ScaleFactorChanged {
-                    new_inner_size,
-                    ..
-                } = &event
-                {
+                }
+                WindowEvent::ScaleFactorChanged {
+                    ref new_inner_size, ..
+                } => {
                     gl_window.resize(**new_inner_size);
                 }
-                egui_glow.on_event(&event);
-                gl_window.window().request_redraw();
-            }
-            glutin::event::Event::LoopDestroyed => {
-                egui_glow.destroy();
-            }
-            glutin::event::Event::NewEvents(glutin::event::StartCause::ResumeTimeReached {
-                ..
-            }) => {
-                gl_window.window().request_redraw();
+                _ => {}
             }
 
-            _ => (),
+            egui_glow.on_event(&event);
+            gl_window.window().request_redraw();
         }
+        Event::LoopDestroyed => {
+            egui_glow.destroy();
+        }
+        Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+            gl_window.window().request_redraw();
+        }
+        _ => {}
     });
+}
+
+fn redraw(
+    app: &mut app::App,
+    egui_glow: &mut egui_glow::EguiGlow,
+    gl_window: &glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>,
+) -> glutin::event_loop::ControlFlow {
+    let repaint_after = egui_glow.run(gl_window.window(), |egui_ctx| {
+        #[allow(clippy::cast_possible_truncation)]
+        egui_ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
+        app.update(egui_ctx, gl_window);
+    });
+    let control_flow = if repaint_after.is_zero() {
+        gl_window.window().request_redraw();
+        glutin::event_loop::ControlFlow::Poll
+    } else if let Some(instant) = Instant::now().checked_add(repaint_after) {
+        glutin::event_loop::ControlFlow::WaitUntil(instant)
+    } else {
+        glutin::event_loop::ControlFlow::Wait
+    };
+
+    // draw things behind egui here
+    egui_glow.paint(gl_window.window());
+    // draw things on top of egui here
+    gl_window.swap_buffers().unwrap();
+
+    control_flow
 }
 
 fn create_display(
