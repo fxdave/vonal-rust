@@ -27,7 +27,6 @@ impl App {
 pub const SEARCH_INPUT_ID: &str = "#search_input";
 
 impl App {
-
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     pub fn update(
@@ -93,9 +92,13 @@ impl App {
     }
 
     fn render_mode_indicator_icon(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let size = self.prompt_icon.size_vec2();
         ui.add_sized(
             [50., 50.],
-            Image::new(self.prompt_icon.texture_id(ctx), vec2(15., 15.)),
+            Image::new(
+                self.prompt_icon.texture_id(ctx),
+                vec2(size.x * 15. / size.y, 15.),
+            ),
         );
     }
 
