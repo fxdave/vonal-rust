@@ -1,4 +1,4 @@
-use eframe::egui::{Context, Ui};
+use egui::{Context, Ui};
 
 mod launcher;
 mod math;

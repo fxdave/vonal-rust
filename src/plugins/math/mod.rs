@@ -1,10 +1,9 @@
+use egui::Color32;
+use poll_promise::Promise;
 use std::{
     process::{Command, Stdio},
     thread,
 };
-
-use eframe::epaint::Color32;
-use poll_promise::Promise;
 
 use super::{Plugin, PluginFlowControl};
 
@@ -28,7 +27,7 @@ impl Math {
 }
 // TODO: async call, move inside textbox
 impl Plugin for Math {
-    fn search(&mut self, query: &str, ui: &mut eframe::egui::Ui) -> PluginFlowControl {
+    fn search(&mut self, query: &str, ui: &mut egui::Ui) -> PluginFlowControl {
         if !query.starts_with('=') {
             return PluginFlowControl::Continue;
         }
@@ -76,15 +75,19 @@ impl Plugin for Math {
         }
 
         if let Some(result) = &self.result {
-            ui.colored_label(Color32::from_white_alpha(255), result.stdout.clone());
-            ui.colored_label(Color32::from_white_alpha(128), result.stderr.clone());
+            if !result.stdout.is_empty() {
+                ui.colored_label(Color32::from_white_alpha(255), result.stdout.clone());
+            }
+            if !result.stderr.is_empty() {
+                ui.colored_label(Color32::from_white_alpha(128), result.stderr.clone());
+            }
         }
 
         self.previous_query = query.into();
         PluginFlowControl::Break
     }
 
-    fn before_search(&mut self, query: &str, _ctx: &eframe::egui::Context) -> super::Preparation {
+    fn before_search(&mut self, query: &str, _ctx: &egui::Context) -> super::Preparation {
         super::Preparation {
             disable_cursor: false,
             plugin_flow_control: if query.starts_with('=') {

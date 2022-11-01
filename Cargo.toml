@@ -1,17 +1,16 @@
 [package]
-name = "vonal-rust"
+name = "vonal"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 
 # GUI:
-eframe = "0.19.0"
-egui_glium = "0.19.0"
+egui = "0.19.0"
 egui_extras = { version = "0.19.0", features = ["svg"] }
 poll-promise = "0.2.0"
+egui_glow = { version = "0.19.0", features = ["clipboard", "winit"] }
+glutin = "0.29"
 
 # Launcher plugin:
 freedesktop-desktop-entry = "0.5.0"

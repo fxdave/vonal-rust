@@ -1,11 +1,8 @@
-use eframe::{
-    egui::{self, Button, Id, TextEdit, Ui},
-    epaint::Color32,
-};
+use egui::{self, Button, Id, TextEdit, Ui, Color32};
 use regex::Regex;
 use std::process::Command;
 
-use crate::SEARCH_INPUT_ID;
+use crate::app::SEARCH_INPUT_ID;
 
 use self::indexer::traits::{AppIndex, IndexApps};
 
@@ -195,7 +192,7 @@ impl Plugin for Launcher {
     }
 
     #[allow(clippy::useless_let_if_seq)]
-    fn before_search(&mut self, _query: &str, ctx: &eframe::egui::Context) -> Preparation {
+    fn before_search(&mut self, _query: &str, ctx: &egui::Context) -> Preparation {
         let mut disable_cursor = false;
         if ctx.input().key_pressed(egui::Key::ArrowDown) {
             self.select_next();
