@@ -85,7 +85,7 @@ impl Launcher {
             .arg(&exec.to_string())
             .spawn()
         {
-            std::process::exit(0);
+            Some(())
         } else {
             panic!("Unable to start app");
         }
@@ -134,7 +134,12 @@ impl Launcher {
 }
 
 impl Plugin for Launcher {
-    fn search(&mut self, query: &str, ui: &mut Ui) -> PluginFlowControl {
+    fn search(
+        &mut self,
+        query: &mut String,
+        ui: &mut Ui,
+        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) -> PluginFlowControl {
         if query.is_empty() {
             return PluginFlowControl::Continue;
         }
@@ -166,6 +171,8 @@ impl Plugin for Launcher {
                         self.focused_entry = idx;
                         self.focused_entry_action = None;
                         self.launch_selected_action();
+                        query.clear();
+                        gl_window.window().set_visible(false);
                     }
 
                     for (action_idx, action) in result.actions.iter().enumerate() {
@@ -180,6 +187,8 @@ impl Plugin for Launcher {
                             self.focused_entry = idx;
                             self.focused_entry_action = Some(action_idx);
                             self.launch_selected_action();
+                            query.clear();
+                            gl_window.window().set_visible(false);
                         }
                     }
                 });
@@ -196,26 +205,33 @@ impl Plugin for Launcher {
     }
 
     #[allow(clippy::useless_let_if_seq)]
-    fn before_search(&mut self, _query: &str, ctx: &egui::Context) -> Preparation {
+    fn before_search(
+        &mut self,
+        query: &mut String,
+        ctx: &egui::Context,
+        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) -> Preparation {
         let mut disable_cursor = false;
-        if ctx.input().key_down(egui::Key::ArrowDown) {
+        if ctx.input().key_pressed(egui::Key::ArrowDown) {
             self.select_next();
             disable_cursor = true;
         }
-        if ctx.input().key_down(egui::Key::ArrowUp) {
+        if ctx.input().key_pressed(egui::Key::ArrowUp) {
             self.select_prev();
             disable_cursor = true;
         }
-        if ctx.input().key_down(egui::Key::ArrowLeft) {
+        if ctx.input().key_pressed(egui::Key::ArrowLeft) {
             self.select_prev_action();
             disable_cursor = true;
         }
-        if ctx.input().key_down(egui::Key::ArrowRight) {
+        if ctx.input().key_pressed(egui::Key::ArrowRight) {
             self.select_next_action();
             disable_cursor = true;
         }
-        if ctx.input().key_down(egui::Key::Enter) {
+        if ctx.input().key_pressed(egui::Key::Enter) {
             self.launch_selected_action();
+            query.clear();
+            gl_window.window().set_visible(false);
             disable_cursor = true;
         }
 

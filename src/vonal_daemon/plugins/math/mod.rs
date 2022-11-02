@@ -27,12 +27,17 @@ impl Math {
 }
 // TODO: async call, move inside textbox
 impl Plugin for Math {
-    fn search(&mut self, query: &str, ui: &mut egui::Ui) -> PluginFlowControl {
+    fn search(
+        &mut self,
+        query: &mut String,
+        ui: &mut egui::Ui,
+        _: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) -> PluginFlowControl {
         if !query.starts_with('=') {
             return PluginFlowControl::Continue;
         }
 
-        if self.previous_query != query {
+        if self.previous_query != *query {
             self.promise = None;
         }
 
@@ -83,11 +88,16 @@ impl Plugin for Math {
             }
         }
 
-        self.previous_query = query.into();
+        self.previous_query = query.clone();
         PluginFlowControl::Break
     }
 
-    fn before_search(&mut self, query: &str, _ctx: &egui::Context) -> super::Preparation {
+    fn before_search(
+        &mut self,
+        query: &mut String,
+        _ctx: &egui::Context,
+        _: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) -> super::Preparation {
         super::Preparation {
             disable_cursor: false,
             plugin_flow_control: if query.starts_with('=') {

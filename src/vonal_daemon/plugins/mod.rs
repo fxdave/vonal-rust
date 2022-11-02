@@ -14,8 +14,18 @@ pub enum PluginFlowControl {
 }
 
 pub trait Plugin {
-    fn search(&mut self, query: &str, ui: &mut Ui) -> PluginFlowControl;
-    fn before_search(&mut self, _query: &str, _ctx: &Context) -> Preparation {
+    fn search(
+        &mut self,
+        query: &mut String,
+        ui: &mut Ui,
+        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) -> PluginFlowControl;
+    fn before_search(
+        &mut self,
+        _query: &mut String,
+        _ctx: &Context,
+        _: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) -> Preparation {
         Preparation {
             disable_cursor: false,
             plugin_flow_control: PluginFlowControl::Continue,
@@ -39,12 +49,17 @@ impl PluginManager {
         }
     }
 
-    pub fn search(&mut self, query: &str, ui: &mut Ui) {
+    pub fn search(
+        &mut self,
+        query: &mut String,
+        ui: &mut Ui,
+        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) {
         ui.horizontal(|ui| {
             ui.add_space(15.);
             ui.vertical(|ui| {
                 for i in &mut self.plugins {
-                    let flow_control = i.search(query, ui);
+                    let flow_control = i.search(query, ui, gl_window);
                     if let PluginFlowControl::Break = flow_control {
                         return;
                     }
@@ -53,10 +68,15 @@ impl PluginManager {
         });
     }
 
-    pub fn before_search(&mut self, query: &str, ctx: &Context) -> Preparation {
+    pub fn before_search(
+        &mut self,
+        query: &mut String,
+        ctx: &Context,
+        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) -> Preparation {
         let mut disable_cursor = false;
         for plugin in &mut self.plugins {
-            let preparation = plugin.before_search(query, ctx);
+            let preparation = plugin.before_search(query, ctx, gl_window);
             disable_cursor |= preparation.disable_cursor;
             if let PluginFlowControl::Break = preparation.plugin_flow_control {
                 break;

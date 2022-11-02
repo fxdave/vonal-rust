@@ -105,14 +105,21 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
         Event::UserEvent(UserEvent::CliCommand(command)) => match command.as_str() {
             "show" => {
                 gl_window.window().set_visible(true);
+                if let Some(monitor) = gl_window.window().current_monitor() {
+                    gl_window.window().set_outer_position(monitor.position());
+                }
             }
             "hide" => {
                 gl_window.window().set_visible(false);
             }
             "toggle" => {
-                gl_window
-                    .window()
-                    .set_visible(!gl_window.window().is_visible().unwrap_or(false));
+                let show = !gl_window.window().is_visible().unwrap_or(false);
+                gl_window.window().set_visible(show);
+                if show {
+                    if let Some(monitor) = gl_window.window().current_monitor() {
+                        gl_window.window().set_outer_position(monitor.position());
+                    }
+                }
             }
             command => println!("Got command: {:?}", command),
         },

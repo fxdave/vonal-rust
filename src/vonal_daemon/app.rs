@@ -47,10 +47,12 @@ impl App {
         };
 
         // Empty search bar / exit on escape
-        self.handle_escape(ctx);
+        self.handle_escape(ctx, gl_window);
 
         // Notify plugins before render
-        let preparation = self.plugin_manager.before_search(&self.query, ctx);
+        let preparation = self
+            .plugin_manager
+            .before_search(&mut self.query, ctx, gl_window);
 
         // render window
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
@@ -60,7 +62,7 @@ impl App {
             });
 
             // Let plugins render their results
-            self.plugin_manager.search(&self.query, ui);
+            self.plugin_manager.search(&mut self.query, ui, gl_window);
 
             // reset window height
             if let Some(monitor) = gl_window.window().current_monitor() {
@@ -102,10 +104,14 @@ impl App {
         );
     }
 
-    fn handle_escape(&mut self, ctx: &egui::Context) {
+    fn handle_escape(
+        &mut self,
+        ctx: &egui::Context,
+        window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+    ) {
         if ctx.input().key_pressed(egui::Key::Escape) {
             if self.query.is_empty() {
-                std::process::exit(0)
+                window.window().set_visible(false);
             }
             self.query = String::new();
         }
