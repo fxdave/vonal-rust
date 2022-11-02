@@ -3,6 +3,18 @@ name = "vonal"
 version = "0.1.0"
 edition = "2021"
 features = ["launcher_plugin", "math_plugin"]
+path = "src/vonal_daemon/main.rs"
+
+[[bin]]
+name = "vonal"
+path = "src/vonal_daemon/main.rs"
+
+[[bin]]
+name = "vonalc"
+path = "src/vonal_client/main.rs"
+
+[env]
+SOCKET_PATH = { value = "vonal.socket" }
 
 [features]
 default = ["launcher_plugin", "math_plugin"]

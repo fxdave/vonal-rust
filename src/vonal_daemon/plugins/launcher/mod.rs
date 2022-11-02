@@ -1,4 +1,4 @@
-use egui::{self, Button, Id, TextEdit, Ui, Color32};
+use egui::{self, Button, Color32, Id, TextEdit, Ui};
 use regex::Regex;
 use std::process::Command;
 
@@ -135,6 +135,10 @@ impl Launcher {
 
 impl Plugin for Launcher {
     fn search(&mut self, query: &str, ui: &mut Ui) -> PluginFlowControl {
+        if query.is_empty() {
+            return PluginFlowControl::Continue;
+        }
+
         self.results = self
             .finder
             .find(query)
@@ -194,23 +198,23 @@ impl Plugin for Launcher {
     #[allow(clippy::useless_let_if_seq)]
     fn before_search(&mut self, _query: &str, ctx: &egui::Context) -> Preparation {
         let mut disable_cursor = false;
-        if ctx.input().key_pressed(egui::Key::ArrowDown) {
+        if ctx.input().key_down(egui::Key::ArrowDown) {
             self.select_next();
             disable_cursor = true;
         }
-        if ctx.input().key_pressed(egui::Key::ArrowUp) {
+        if ctx.input().key_down(egui::Key::ArrowUp) {
             self.select_prev();
             disable_cursor = true;
         }
-        if ctx.input().key_pressed(egui::Key::ArrowLeft) {
+        if ctx.input().key_down(egui::Key::ArrowLeft) {
             self.select_prev_action();
             disable_cursor = true;
         }
-        if ctx.input().key_pressed(egui::Key::ArrowRight) {
+        if ctx.input().key_down(egui::Key::ArrowRight) {
             self.select_next_action();
             disable_cursor = true;
         }
-        if ctx.input().key_pressed(egui::Key::Enter) {
+        if ctx.input().key_down(egui::Key::Enter) {
             self.launch_selected_action();
             disable_cursor = true;
         }

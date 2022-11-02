@@ -1,18 +1,73 @@
-use std::time::Instant;
 use glutin::{
     dpi::PhysicalSize,
     event::{Event, StartCause},
+    event_loop::EventLoop,
 };
+use std::thread;
+use std::{fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
 
 mod app;
+#[path = "../common.rs"]
+mod common;
 mod plugins;
 
 fn main() {
-    let event_loop = glutin::event_loop::EventLoopBuilder::with_user_event().build();
+    let (tx, rx) = mpsc::channel();
+    let socket_thread = thread::spawn(move || {
+        start_socket(&tx);
+    });
+    start_gui(rx);
+    socket_thread.join().expect("Couldn't join thread.");
+}
+
+fn start_socket(tx: &mpsc::Sender<UserEvent>) {
+    let socket = Path::new(common::SOCKET_PATH);
+
+    // Delete old socket if necessary
+    if socket.exists() {
+        fs::remove_file(&socket).unwrap();
+    }
+
+    // Bind to socket
+    let stream = if let Ok(stream) = UnixListener::bind(&socket) {
+        stream
+    } else {
+        panic!("failed to bind socket")
+    };
+
+    println!("Server started, waiting for clients");
+
+    // Iterate over clients, blocks if no client available
+    for client in stream.incoming() {
+        let mut buf = String::new();
+        match client {
+            Ok(mut stream) => {
+                stream.read_to_string(&mut buf).unwrap();
+                if tx.send(UserEvent::CliCommand(buf)).is_err() {
+                    break;
+                }
+            }
+            Err(_) => println!("error"),
+        }
+    }
+}
+
+fn start_gui(rx: mpsc::Receiver<UserEvent>) {
+    let event_loop: EventLoop<UserEvent> =
+        glutin::event_loop::EventLoopBuilder::with_user_event().build();
     let (gl_window, gl) = create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl);
     let mut app = app::App::new();
+
+    let proxy = event_loop.create_proxy();
+
+    thread::spawn(move || {
+        while let Ok(message) = rx.recv() {
+            proxy.send_event(message).expect("Couldn't send message");
+        }
+    });
+
     event_loop.run(move |event, _, control_flow| match event {
         Event::RedrawRequested(_) => {
             *control_flow = redraw(&mut app, &mut egui_glow, &gl_window);
@@ -21,7 +76,8 @@ fn main() {
             use glutin::event::WindowEvent;
             match event {
                 WindowEvent::CloseRequested | WindowEvent::Destroyed => {
-                    *control_flow = glutin::event_loop::ControlFlow::Exit;
+                    gl_window.window().set_visible(false);
+                    // *control_flow = glutin::event_loop::ControlFlow::Exit;
                 }
                 WindowEvent::Resized(ref physical_size) => {
                     gl_window.resize(*physical_size);
@@ -34,7 +90,10 @@ fn main() {
                 _ => {}
             }
 
-            egui_glow.on_event(&event);
+            if gl_window.window().is_visible().unwrap_or(false) {
+                egui_glow.on_event(&event);
+            }
+
             gl_window.window().request_redraw();
         }
         Event::LoopDestroyed => {
@@ -43,6 +102,20 @@ fn main() {
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             gl_window.window().request_redraw();
         }
+        Event::UserEvent(UserEvent::CliCommand(command)) => match command.as_str() {
+            "show" => {
+                gl_window.window().set_visible(true);
+            }
+            "hide" => {
+                gl_window.window().set_visible(false);
+            }
+            "toggle" => {
+                gl_window
+                    .window()
+                    .set_visible(!gl_window.window().is_visible().unwrap_or(false));
+            }
+            command => println!("Got command: {:?}", command),
+        },
         _ => {}
     });
 }
@@ -75,12 +148,13 @@ fn redraw(
 }
 
 fn create_display(
-    event_loop: &glutin::event_loop::EventLoop<()>,
+    event_loop: &glutin::event_loop::EventLoop<UserEvent>,
 ) -> (
     glutin::WindowedContext<glutin::PossiblyCurrent>,
     egui_glow::glow::Context,
 ) {
     let window_builder = glutin::window::WindowBuilder::new()
+        .with_visible(false)
         .with_decorations(false)
         .with_resizable(false)
         .with_always_on_top(true)
@@ -109,7 +183,7 @@ fn create_display(
     if let Some(monitor) = gl_window.window().current_monitor() {
         let size = PhysicalSize {
             width: monitor.size().width,
-            height: 50,
+            height: 30,
         };
         gl_window.resize(size);
         gl_window.window().set_inner_size(size);
@@ -119,4 +193,9 @@ fn create_display(
     }
 
     (gl_window, gl)
+}
+
+#[derive(Debug)]
+enum UserEvent {
+    CliCommand(String),
 }
