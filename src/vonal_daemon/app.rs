@@ -34,6 +34,7 @@ impl App {
         ctx: &egui::Context,
         gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
     ) {
+        println!("update called");
         // reset size
         gl_window.resize(PhysicalSize {
             width: 10,

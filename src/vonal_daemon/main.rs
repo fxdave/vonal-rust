@@ -94,6 +94,7 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
                 egui_glow.on_event(&event);
             }
 
+            println!("requesting redraw because of window event");
             gl_window.window().request_redraw();
         }
         Event::LoopDestroyed => {
@@ -104,6 +105,7 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
         }
         Event::UserEvent(UserEvent::CliCommand(command)) => match command.as_str() {
             "show" => {
+                println!("show called");
                 gl_window.window().set_visible(true);
                 if let Some(monitor) = gl_window.window().current_monitor() {
                     gl_window.window().set_outer_position(monitor.position());

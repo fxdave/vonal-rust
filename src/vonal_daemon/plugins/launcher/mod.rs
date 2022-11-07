@@ -228,11 +228,15 @@ impl Plugin for Launcher {
             self.select_next_action();
             disable_cursor = true;
         }
+        if ctx.input().key_released(egui::Key::Enter) {
+            println!("released");
+        }
         if ctx.input().key_pressed(egui::Key::Enter) {
-            self.launch_selected_action();
-            query.clear();
-            gl_window.window().set_visible(false);
-            disable_cursor = true;
+            println!("pressed");
+            // self.launch_selected_action();
+            // query.clear();
+            // gl_window.window().set_visible(false);
+            // disable_cursor = true;
         }
 
         Preparation {
