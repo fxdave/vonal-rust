@@ -1,10 +1,13 @@
+#![feature(panic_info_message)]
 use glutin::{
     dpi::PhysicalSize,
     event::{Event, StartCause},
     event_loop::EventLoop,
 };
-use std::thread;
-use std::{fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
+use std::{
+    fs, io::Read, os::unix::net::UnixListener, path::Path, process, sync::mpsc, time::Instant,
+};
+use std::{os::unix::net::UnixStream, thread};
 
 mod app;
 #[path = "../common.rs"]
@@ -12,6 +15,12 @@ mod common;
 mod plugins;
 
 fn main() {
+    // Set less distracting panic message
+    std::panic::set_hook(Box::new(|info| match info.message() {
+        Some(message) => println!("Error: {}", message),
+        None => println!("{}", info),
+    }));
+
     let (tx, rx) = mpsc::channel();
     let socket_thread = thread::spawn(move || {
         start_socket(&tx);
@@ -22,6 +31,11 @@ fn main() {
 
 fn start_socket(tx: &mpsc::Sender<UserEvent>) {
     let socket = Path::new(common::SOCKET_PATH);
+
+    if UnixStream::connect(&socket).is_ok() {
+        tx.send(UserEvent::Quit).unwrap();
+        panic!("One daemon is already listening.")
+    }
 
     // Delete old socket if necessary
     if socket.exists() {
@@ -123,6 +137,7 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
             }
             command => println!("Got command: {:?}", command),
         },
+        Event::UserEvent(UserEvent::Quit) => process::exit(0),
         _ => {}
     });
 }
@@ -204,5 +219,6 @@ fn create_display(
 
 #[derive(Debug)]
 enum UserEvent {
+    Quit,
     CliCommand(String),
 }
