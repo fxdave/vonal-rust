@@ -11,27 +11,122 @@ use super::{Plugin, PluginFlowControl, Preparation};
 mod finder;
 mod indexer;
 
+#[derive(Default, PartialEq, Eq)]
+struct Counter(Option<usize>);
+
+impl Counter {
+    fn get(&self) -> Option<usize> {
+        self.0
+    }
+
+    fn next(&mut self, len: usize) {
+        self.0 = match self.0 {
+            _ if len == 0 => None,
+            None => Some(0),
+            Some(x) if x + 1 == len => Some(x),
+            Some(x) => Some(x + 1),
+        }
+    }
+
+    fn prev(&mut self, len: usize) {
+        self.0 = match self.0 {
+            _ if len == 0 => None,
+            None | Some(0) => None,
+            Some(x) => Some(x - 1),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.0 = None
+    }
+}
+
+#[derive(Default)]
+pub struct Focus {
+    /// The main command
+    entry: Counter,
+    /// Only the sub commands
+    entry_action: Counter,
+}
+
+impl Focus {
+    fn entry(&self) -> Option<usize> {
+        return self.entry.get();
+    }
+
+    fn entry_action(&self) -> Option<usize> {
+        return self.entry_action.get();
+    }
+
+    fn set(&mut self, entry: Option<usize>, action: Option<usize>) {
+        self.entry = Counter(entry);
+        self.entry_action = Counter(action);
+    }
+
+    fn is_focused(&self, entry: usize, action: Option<usize>) -> bool {
+        return self.is_entry_focused(entry) && self.is_action_focused(action);
+    }
+
+    fn is_entry_focused(&self, entry: usize) -> bool {
+        return self.entry == Counter(Some(entry));
+    }
+
+    fn is_action_focused(&self, action: Option<usize>) -> bool {
+        return self.entry_action == Counter(action);
+    }
+
+    fn focus_next(&mut self, entries_len: usize) {
+        self.entry.next(entries_len);
+        self.entry_action.reset();
+    }
+
+    fn focus_prev(&mut self, entries_len: usize) {
+        self.entry.prev(entries_len);
+        self.entry_action.reset();
+    }
+
+    fn focus_next_action(&mut self, actions_len: usize) {
+        self.entry_action.next(actions_len);
+    }
+
+    fn focus_prev_action(&mut self, actions_len: usize) {
+        self.entry_action.prev(actions_len);
+    }
+
+    fn set_default(&mut self, entries_len: usize) {
+        self.entry = Counter(match self.entry.get() {
+            None if entries_len > 0 => Some(0),
+            x => x,
+        })
+    }
+}
+
 pub struct Launcher {
     finder: finder::Finder,
     results: Vec<AppIndex>,
-    focused_entry: usize,
-    focused_entry_action: Option<usize>,
+    focus: Focus,
 }
 
 impl Launcher {
     pub fn new() -> Self {
-        let indices = indexer::Indexer::default().index();
-        let finder = finder::Finder::new(indices);
         Self {
-            finder,
+            finder: Self::index_apps_and_get_finder(),
             results: Vec::new(),
-            focused_entry: 0,
-            focused_entry_action: None,
+            focus: Focus::default(),
         }
     }
 
-    pub fn launch_selected_action(&self) -> Option<()> {
-        let exec = self.get_selected_command()?
+    pub fn reindex_apps(&mut self) {
+        self.finder = Self::index_apps_and_get_finder()
+    }
+
+    fn index_apps_and_get_finder() -> finder::Finder {
+        let indices = indexer::Indexer::default().index();
+        finder::Finder::new(indices)
+    }
+
+    pub fn launch_focused_action(&self) -> Option<()> {
+        let exec = self.get_focused_command()?
 
             /*
             * %f
@@ -91,45 +186,21 @@ impl Launcher {
         }
     }
 
-    fn get_selected_command(&self) -> Option<&str> {
+    fn get_focused_command(&self) -> Option<&str> {
         let entry = self.get_focused_entry()?;
-        Some(match self.focused_entry_action {
+        Some(match self.focus.entry_action() {
             Some(action) => &entry.actions.get(action)?.command,
             None => &entry.exec,
         })
     }
 
     fn get_focused_entry(&self) -> Option<&AppIndex> {
-        self.results.get(self.focused_entry)
+        self.focus.entry().and_then(|i| self.results.get(i))
     }
 
-    fn select_next(&mut self) {
-        self.focused_entry = self.results.len().min(self.focused_entry + 1);
-        self.focused_entry_action = None;
-    }
-
-    fn select_prev(&mut self) {
-        self.focused_entry = self.focused_entry.max(1) - 1;
-        self.focused_entry_action = None;
-    }
-
-    fn select_next_action(&mut self) {
-        if let Some(entry) = self.get_focused_entry() {
-            let len = entry.actions.len();
-            self.focused_entry_action = match self.focused_entry_action {
-                Some(action) if action >= len - 1 => Some(len - 1),
-                Some(action) => Some(action + 1),
-                None if len > 0 => Some(0),
-                None => None,
-            };
-        }
-    }
-
-    fn select_prev_action(&mut self) {
-        self.focused_entry_action = match self.focused_entry_action {
-            Some(0) | None => None,
-            Some(action) => Some(action - 1),
-        }
+    fn launch_action(&mut self, idx: usize, action: Option<usize>) {
+        self.focus.set(Some(idx), action);
+        self.launch_focused_action();
     }
 }
 
@@ -137,10 +208,22 @@ impl Plugin for Launcher {
     fn search(
         &mut self,
         query: &mut String,
+        ctx: &egui::Context,
         ui: &mut Ui,
         gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
     ) -> PluginFlowControl {
+        let enter_pressed = ctx.input().key_pressed(egui::Key::Enter);
+
         if query.is_empty() {
+            return PluginFlowControl::Continue;
+        }
+
+        if query.starts_with(",") {
+            let refresh_btn = ui
+                .add(Button::new("Refresh application cache").fill(Color32::from_white_alpha(16)));
+            if refresh_btn.clicked() || enter_pressed {
+                self.reindex_apps()
+            }
             return PluginFlowControl::Continue;
         }
 
@@ -152,6 +235,8 @@ impl Plugin for Launcher {
             .cloned()
             .collect();
 
+        self.focus.set_default(self.results.len());
+
         // TODO: Cow will be faster then cloning always
         self.results
             .clone()
@@ -159,34 +244,30 @@ impl Plugin for Launcher {
             .enumerate()
             .for_each(|(idx, result)| {
                 ui.horizontal(|ui| {
-                    if self.focused_entry == idx {
+                    if self.focus.is_entry_focused(idx) {
                         ui.colored_label(Color32::from_gray(255), "Launch");
                     } else {
                         ui.colored_label(Color32::from_gray(200), "Launch");
                     }
 
                     let default_action_btn =
-                        Button::new(&result.name).fill(Color32::from_black_alpha(0));
-                    if ui.add(default_action_btn).clicked() {
-                        self.focused_entry = idx;
-                        self.focused_entry_action = None;
-                        self.launch_selected_action();
+                        ui.add(Button::new(&result.name).fill(Color32::from_black_alpha(0)));
+                    let focused = self.focus.is_focused(idx, None);
+                    if default_action_btn.clicked() || (focused && enter_pressed) {
+                        self.launch_action(idx, None);
                         query.clear();
                         gl_window.window().set_visible(false);
                     }
 
                     for (action_idx, action) in result.actions.iter().enumerate() {
-                        let color = match self.focused_entry_action {
-                            Some(focused_ix) if focused_ix == action_idx => {
-                                Color32::from_white_alpha(16)
-                            }
-                            _ => Color32::from_white_alpha(8),
+                        let focused = self.focus.is_focused(idx, Some(action_idx));
+                        let color = match focused {
+                            true => Color32::from_white_alpha(16),
+                            false => Color32::from_white_alpha(8),
                         };
                         let action_btn = Button::new(&action.name).fill(color);
-                        if ui.add(action_btn).clicked() {
-                            self.focused_entry = idx;
-                            self.focused_entry_action = Some(action_idx);
-                            self.launch_selected_action();
+                        if ui.add(action_btn).clicked() || (focused && enter_pressed) {
+                            self.launch_action(idx, Some(action_idx));
                             query.clear();
                             gl_window.window().set_visible(false);
                         }
@@ -207,31 +288,29 @@ impl Plugin for Launcher {
     #[allow(clippy::useless_let_if_seq)]
     fn before_search(
         &mut self,
-        query: &mut String,
+        _query: &mut String,
         ctx: &egui::Context,
-        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        _gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
     ) -> Preparation {
         let mut disable_cursor = false;
         if ctx.input().key_pressed(egui::Key::ArrowDown) {
-            self.select_next();
+            self.focus.focus_next(self.results.len());
             disable_cursor = true;
         }
         if ctx.input().key_pressed(egui::Key::ArrowUp) {
-            self.select_prev();
+            self.focus.focus_prev(self.results.len());
             disable_cursor = true;
         }
         if ctx.input().key_pressed(egui::Key::ArrowLeft) {
-            self.select_prev_action();
+            if let Some(entry) = self.focus.entry().and_then(|i| self.results.get(i)) {
+                self.focus.focus_prev_action(entry.actions.len());
+            }
             disable_cursor = true;
         }
         if ctx.input().key_pressed(egui::Key::ArrowRight) {
-            self.select_next_action();
-            disable_cursor = true;
-        }
-        if ctx.input().key_pressed(egui::Key::Enter) {
-            self.launch_selected_action();
-            query.clear();
-            gl_window.window().set_visible(false);
+            if let Some(entry) = self.focus.entry().and_then(|i| self.results.get(i)) {
+                self.focus.focus_next_action(entry.actions.len());
+            }
             disable_cursor = true;
         }
 

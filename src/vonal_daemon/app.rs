@@ -62,7 +62,8 @@ impl App {
             });
 
             // Let plugins render their results
-            self.plugin_manager.search(&mut self.query, ui, gl_window);
+            // esetleg legyen itt a ctx?
+            self.plugin_manager.search(&mut self.query, ctx, ui, gl_window);
 
             // reset window height
             if let Some(monitor) = gl_window.window().current_monitor() {

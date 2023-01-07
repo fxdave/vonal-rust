@@ -17,6 +17,7 @@ pub trait Plugin {
     fn search(
         &mut self,
         query: &mut String,
+        ctx: &egui::Context,
         ui: &mut Ui,
         gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
     ) -> PluginFlowControl;
@@ -52,6 +53,7 @@ impl PluginManager {
     pub fn search(
         &mut self,
         query: &mut String,
+        ctx: &egui::Context,
         ui: &mut Ui,
         gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
     ) {
@@ -59,7 +61,7 @@ impl PluginManager {
             ui.add_space(15.);
             ui.vertical(|ui| {
                 for i in &mut self.plugins {
-                    let flow_control = i.search(query, ui, gl_window);
+                    let flow_control = i.search(query, ctx, ui, gl_window);
                     if let PluginFlowControl::Break = flow_control {
                         return;
                     }
