@@ -29,3 +29,9 @@ Currently, there are 2 plugins:
     - example commands:
         - `= sin(radians(90))` will show the result of `1.0`
         - `= [i for i in range(1000) if i %99 == 0]` will show the numbers between 0 and 999 that are dividable by 99
+
+## Contribution
+
+Please let me know if you would like to try this out, it would motivate me to work on the project.  
+Please tell me if you have any ideas.  
+Feel free to open any issues.
