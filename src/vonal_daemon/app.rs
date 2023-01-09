@@ -1,8 +1,8 @@
 use egui::{vec2, Color32, FontId, FontSelection, Id, Image, TextEdit};
 use egui_extras::RetainedImage;
-use glutin::dpi::PhysicalSize;
+use winit::dpi::PhysicalSize;
 
-use crate::plugins::PluginManager;
+use crate::{plugins::PluginManager, GlutinWindowContext};
 
 pub struct App {
     query: String,
@@ -32,7 +32,7 @@ impl App {
     pub fn update(
         &mut self,
         ctx: &egui::Context,
-        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        gl_window: &GlutinWindowContext,
     ) {
         // reset size
         gl_window.resize(PhysicalSize {
@@ -108,7 +108,7 @@ impl App {
     fn handle_escape(
         &mut self,
         ctx: &egui::Context,
-        window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        window: &GlutinWindowContext,
     ) {
         if ctx.input().key_pressed(egui::Key::Escape) {
             if self.query.is_empty() {

@@ -5,6 +5,8 @@ use std::{
     thread,
 };
 
+use crate::GlutinWindowContext;
+
 use super::{Plugin, PluginFlowControl};
 
 #[derive(Default)]
@@ -30,9 +32,9 @@ impl Plugin for Math {
     fn search(
         &mut self,
         query: &mut String,
-        ctx: &egui::Context,
+        _ctx: &egui::Context,
         ui: &mut egui::Ui,
-        _: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        _: &GlutinWindowContext,
     ) -> PluginFlowControl {
         if !query.starts_with('=') {
             return PluginFlowControl::Continue;
@@ -97,7 +99,7 @@ impl Plugin for Math {
         &mut self,
         query: &mut String,
         _ctx: &egui::Context,
-        _: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        _: &GlutinWindowContext,
     ) -> super::Preparation {
         super::Preparation {
             disable_cursor: false,

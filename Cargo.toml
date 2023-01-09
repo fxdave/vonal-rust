@@ -17,12 +17,15 @@ launcher_plugin = ["freedesktop-desktop-entry", "regex"]
 math_plugin = []
 
 [dependencies]
-egui = "0.19.0"
-egui_extras = { version = "0.19.0", features = ["svg"] }
+egui = "0.20.1"
+egui_extras = { version = "0.20.0", features = ["svg"] }
 poll-promise = "0.2.0"
-egui_glow = { version = "0.19.0", features = ["clipboard", "winit"] }
-glutin = "0.29"
-
+egui_glow = { version = "0.20.1", features = ["clipboard", "winit"] }
+glutin = { version = "0.30.3", features = ["x11"] }
+glutin-winit = { version = "0.2.1", features = ["x11"] }
+winit = { version = "0.27.5", features = ["x11"] }
 # launcher_plugin
 freedesktop-desktop-entry = { version = "0.5.0", optional = true }
 regex = { version = "1.6.0", optional = true }
+raw-window-handle = "0.5.0"
+x11 = { version = "2.20.1", features=["xlib"]}

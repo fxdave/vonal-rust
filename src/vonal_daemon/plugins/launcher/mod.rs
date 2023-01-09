@@ -2,7 +2,7 @@ use egui::{self, Button, Color32, Id, TextEdit, Ui};
 use regex::Regex;
 use std::process::Command;
 
-use crate::app::SEARCH_INPUT_ID;
+use crate::{app::SEARCH_INPUT_ID, GlutinWindowContext};
 
 use self::indexer::traits::{AppIndex, IndexApps};
 
@@ -210,7 +210,7 @@ impl Plugin for Launcher {
         query: &mut String,
         ctx: &egui::Context,
         ui: &mut Ui,
-        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        gl_window: &GlutinWindowContext,
     ) -> PluginFlowControl {
         let enter_pressed = ctx.input().key_pressed(egui::Key::Enter);
 
@@ -290,7 +290,7 @@ impl Plugin for Launcher {
         &mut self,
         _query: &mut String,
         ctx: &egui::Context,
-        _gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        _gl_window: &GlutinWindowContext,
     ) -> Preparation {
         let mut disable_cursor = false;
         if ctx.input().key_pressed(egui::Key::ArrowDown) {

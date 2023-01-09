@@ -1,13 +1,18 @@
 #![feature(panic_info_message)]
-use glutin::{
-    dpi::PhysicalSize,
-    event::{Event, StartCause},
-    event_loop::EventLoop,
-};
 use std::{
     fs, io::Read, os::unix::net::UnixListener, path::Path, process, sync::mpsc, time::Instant,
 };
 use std::{os::unix::net::UnixStream, thread};
+
+use egui_glow::glow;
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
+use winit::dpi::PhysicalSize;
+use winit::event::{Event, StartCause};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
+use winit::window::WindowBuilder;
+use x11::xlib::_XDisplay;
 
 mod app;
 #[path = "../common.rs"]
@@ -67,11 +72,10 @@ fn start_socket(tx: &mpsc::Sender<UserEvent>) {
 }
 
 fn start_gui(rx: mpsc::Receiver<UserEvent>) {
-    let event_loop: EventLoop<UserEvent> =
-        glutin::event_loop::EventLoopBuilder::with_user_event().build();
+    let event_loop: EventLoop<UserEvent> = EventLoopBuilder::with_user_event().build();
     let (gl_window, gl) = create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
-    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl);
+    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl, None);
     let mut app = app::App::new();
 
     let proxy = event_loop.create_proxy();
@@ -87,11 +91,10 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
             *control_flow = redraw(&mut app, &mut egui_glow, &gl_window);
         }
         Event::WindowEvent { event, .. } => {
-            use glutin::event::WindowEvent;
+            use winit::event::WindowEvent;
             match event {
                 WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                     gl_window.window().set_visible(false);
-                    // *control_flow = glutin::event_loop::ControlFlow::Exit;
                 }
                 WindowEvent::Resized(ref physical_size) => {
                     gl_window.resize(*physical_size);
@@ -105,10 +108,11 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
             }
 
             if gl_window.window().is_visible().unwrap_or(false) {
-                egui_glow.on_event(&event);
+                let event_response = egui_glow.on_event(&event);
+                if event_response.repaint {
+                    gl_window.window().request_redraw();
+                }
             }
-
-            gl_window.window().request_redraw();
         }
         Event::LoopDestroyed => {
             egui_glow.destroy();
@@ -117,23 +121,11 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
             gl_window.window().request_redraw();
         }
         Event::UserEvent(UserEvent::CliCommand(command)) => match command.as_str() {
-            "show" => {
-                gl_window.window().set_visible(true);
-                if let Some(monitor) = gl_window.window().current_monitor() {
-                    gl_window.window().set_outer_position(monitor.position());
-                }
-            }
-            "hide" => {
-                gl_window.window().set_visible(false);
-            }
+            "show" => show_window(&gl_window, true),
+            "hide" => hide_window(&gl_window),
             "toggle" => {
                 let show = !gl_window.window().is_visible().unwrap_or(false);
-                gl_window.window().set_visible(show);
-                if show {
-                    if let Some(monitor) = gl_window.window().current_monitor() {
-                        gl_window.window().set_outer_position(monitor.position());
-                    }
-                }
+                show_window(&gl_window, show);
             }
             command => println!("Got command: {:?}", command),
         },
@@ -142,11 +134,22 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
     });
 }
 
+fn hide_window(gl_window: &GlutinWindowContext) {
+    gl_window.window().set_visible(false);
+}
+
+fn show_window(gl_window: &GlutinWindowContext, show: bool) {
+    gl_window.window().set_visible(show);
+    let monitor = get_focused_monitor(&gl_window).expect("pointer is not on the monitor");
+    gl_window.window().set_outer_position(monitor.position());
+    gl_window.window().set_inner_size(monitor.size());
+}
+
 fn redraw(
     app: &mut app::App,
     egui_glow: &mut egui_glow::EguiGlow,
-    gl_window: &glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>,
-) -> glutin::event_loop::ControlFlow {
+    gl_window: &GlutinWindowContext,
+) -> ControlFlow {
     let repaint_after = egui_glow.run(gl_window.window(), |egui_ctx| {
         #[allow(clippy::cast_possible_truncation)]
         egui_ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
@@ -154,11 +157,11 @@ fn redraw(
     });
     let control_flow = if repaint_after.is_zero() {
         gl_window.window().request_redraw();
-        glutin::event_loop::ControlFlow::Poll
+        ControlFlow::Poll
     } else if let Some(instant) = Instant::now().checked_add(repaint_after) {
-        glutin::event_loop::ControlFlow::WaitUntil(instant)
+        ControlFlow::WaitUntil(instant)
     } else {
-        glutin::event_loop::ControlFlow::Wait
+        ControlFlow::Wait
     };
 
     // draw things behind egui here
@@ -168,14 +171,170 @@ fn redraw(
 
     control_flow
 }
+pub struct GlutinWindowContext {
+    pub window: winit::window::Window,
+    pub gl_context: glutin::context::PossiblyCurrentContext,
+    pub gl_display: glutin::display::Display,
+    pub gl_surface: glutin::surface::Surface<glutin::surface::WindowSurface>,
+}
+
+impl GlutinWindowContext {
+    // refactor this function to use `glutin-winit` crate eventually.
+    // preferably add android support at the same time.
+    #[allow(unsafe_code)]
+    unsafe fn new(winit_window: winit::window::Window) -> Self {
+        use glutin::prelude::*;
+        use raw_window_handle::*;
+
+        let raw_display_handle = winit_window.raw_display_handle();
+        let raw_window_handle = winit_window.raw_window_handle();
+
+        #[cfg(target_os = "linux")]
+        let preference = glutin::display::DisplayApiPreference::EglThenGlx(Box::new(
+            winit::platform::unix::register_xlib_error_hook,
+        ));
+
+        let gl_display = glutin::display::Display::new(raw_display_handle, preference).unwrap();
+
+        let config_template = glutin::config::ConfigTemplateBuilder::new()
+            .prefer_hardware_accelerated(None)
+            .with_depth_size(0)
+            .with_stencil_size(0)
+            .with_transparency(false)
+            .compatible_with_native_window(raw_window_handle)
+            .build();
+
+        let config = gl_display
+            .find_configs(config_template)
+            .unwrap()
+            .next()
+            .unwrap();
+
+        let context_attributes =
+            glutin::context::ContextAttributesBuilder::new().build(Some(raw_window_handle));
+        // for surface creation.
+        let (width, height): (u32, u32) = winit_window.inner_size().into();
+        let surface_attributes =
+            glutin::surface::SurfaceAttributesBuilder::<glutin::surface::WindowSurface>::new()
+                .build(
+                    raw_window_handle,
+                    std::num::NonZeroU32::new(width).unwrap(),
+                    std::num::NonZeroU32::new(height).unwrap(),
+                );
+        // start creating the gl objects
+        let gl_context = gl_display
+            .create_context(&config, &context_attributes)
+            .unwrap();
+
+        let gl_surface = gl_display
+            .create_window_surface(&config, &surface_attributes)
+            .unwrap();
+
+        let gl_context = gl_context.make_current(&gl_surface).unwrap();
+
+        gl_surface
+            .set_swap_interval(
+                &gl_context,
+                glutin::surface::SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()),
+            )
+            .unwrap();
+
+        GlutinWindowContext {
+            window: winit_window,
+            gl_context,
+            gl_display,
+            gl_surface,
+        }
+    }
+
+    fn window(&self) -> &winit::window::Window {
+        &self.window
+    }
+
+    fn resize(&self, physical_size: winit::dpi::PhysicalSize<u32>) {
+        use glutin::surface::GlSurface;
+        self.gl_surface.resize(
+            &self.gl_context,
+            physical_size.width.try_into().unwrap(),
+            physical_size.height.try_into().unwrap(),
+        );
+    }
+
+    fn swap_buffers(&self) -> glutin::error::Result<()> {
+        use glutin::surface::GlSurface;
+        self.gl_surface.swap_buffers(&self.gl_context)
+    }
+
+    fn get_proc_address(&self, addr: &std::ffi::CStr) -> *const std::ffi::c_void {
+        use glutin::display::GlDisplay;
+        self.gl_display.get_proc_address(addr)
+    }
+}
+
+fn get_focused_monitor(ctx: &GlutinWindowContext) -> Option<winit::monitor::MonitorHandle> {
+    let raw_window_handle = ctx.window().raw_window_handle();
+    let raw_display_handle = ctx.window().raw_display_handle();
+    let pointer = query_pointer(raw_display_handle, raw_window_handle);
+    let mut monitors = ctx.window.available_monitors().filter(|monitor| {
+        let position = monitor.position();
+        let size = monitor.size();
+
+        let x_ok = position.x <= pointer.0 && pointer.0 < (position.x + size.width as i32);
+        let y_ok = position.y <= pointer.1 && pointer.1 < (position.y + size.height as i32);
+
+        return x_ok && y_ok;
+    });
+
+    monitors.next()
+}
+
+fn query_pointer(display: RawDisplayHandle, window: RawWindowHandle) -> (i32, i32) {
+    let connection = if let RawDisplayHandle::Xlib(raw) = display {
+        raw.display
+    } else {
+        panic!("(Connection) We only support X.org over Xlib")
+    };
+    let window = if let RawWindowHandle::Xlib(raw) = window {
+        raw.window
+    } else {
+        panic!("(Window) We only support X.org over Xlib")
+    };
+    let mut r: x11::xlib::Window = Default::default();
+    let mut c: x11::xlib::Window = Default::default();
+    let mut x: i32 = Default::default();
+    let mut y: i32 = Default::default();
+    let mut rx: i32 = Default::default();
+    let mut ry: i32 = Default::default();
+    let mut m: u32 = Default::default();
+
+    let ptr_r: *mut x11::xlib::Window = &mut r;
+    let ptr_c: *mut x11::xlib::Window = &mut c;
+    let ptr_x: *mut i32 = &mut x;
+    let ptr_y: *mut i32 = &mut y;
+    let ptr_rx: *mut i32 = &mut rx;
+    let ptr_ry: *mut i32 = &mut ry;
+    let ptr_m: *mut u32 = &mut m;
+    unsafe {
+        x11::xlib::XQueryPointer(
+            connection as *mut _XDisplay,
+            window,
+            ptr_r,
+            ptr_c,
+            ptr_rx,
+            ptr_ry,
+            ptr_x,
+            ptr_y,
+            ptr_m,
+        );
+    }
+
+    (rx, ry)
+}
 
 fn create_display(
-    event_loop: &glutin::event_loop::EventLoop<UserEvent>,
-) -> (
-    glutin::WindowedContext<glutin::PossiblyCurrent>,
-    egui_glow::glow::Context,
-) {
-    let window_builder = glutin::window::WindowBuilder::new()
+    event_loop: &EventLoop<UserEvent>,
+) -> (GlutinWindowContext, egui_glow::painter::Context) {
+    let winit_window = WindowBuilder::new()
         .with_visible(false)
         .with_decorations(false)
         .with_resizable(false)
@@ -184,35 +343,20 @@ fn create_display(
             width: 10,
             height: 10,
         })
-        .with_title("Vonal");
+        .with_title("Vonal")
+        .build(event_loop)
+        .unwrap();
 
-    let gl_window = unsafe {
-        glutin::ContextBuilder::new()
-            .with_depth_buffer(0)
-            .with_stencil_buffer(0)
-            .with_vsync(true)
-            .build_windowed(window_builder, event_loop)
-            .unwrap()
-            .make_current()
-            .unwrap()
-    };
+    let gl_window = unsafe { GlutinWindowContext::new(winit_window) };
 
     let gl = unsafe {
-        egui_glow::glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
-    };
+        glow::Context::from_loader_function(|s| {
+            let s = std::ffi::CString::new(s)
+                .expect("failed to construct C string from string for gl proc address");
 
-    gl_window.window().set_always_on_top(true);
-    if let Some(monitor) = gl_window.window().current_monitor() {
-        let size = PhysicalSize {
-            width: monitor.size().width,
-            height: 30,
-        };
-        gl_window.resize(size);
-        gl_window.window().set_inner_size(size);
-        gl_window.window().set_min_inner_size(Some(size));
-        gl_window.window().set_max_inner_size(Some(size));
-        gl_window.window().set_outer_position(monitor.position());
-    }
+            gl_window.get_proc_address(&s)
+        })
+    };
 
     (gl_window, gl)
 }

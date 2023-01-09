@@ -1,5 +1,7 @@
 use egui::{Context, Ui};
 
+use crate::GlutinWindowContext;
+
 #[cfg(feature = "launcher_plugin")]
 mod launcher;
 #[cfg(feature = "math_plugin")]
@@ -19,13 +21,13 @@ pub trait Plugin {
         query: &mut String,
         ctx: &egui::Context,
         ui: &mut Ui,
-        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        gl_window: &GlutinWindowContext,
     ) -> PluginFlowControl;
     fn before_search(
         &mut self,
         _query: &mut String,
         _ctx: &Context,
-        _: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        _: &GlutinWindowContext,
     ) -> Preparation {
         Preparation {
             disable_cursor: false,
@@ -55,7 +57,7 @@ impl PluginManager {
         query: &mut String,
         ctx: &egui::Context,
         ui: &mut Ui,
-        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        gl_window: &GlutinWindowContext,
     ) {
         ui.horizontal(|ui| {
             ui.add_space(15.);
@@ -74,7 +76,7 @@ impl PluginManager {
         &mut self,
         query: &mut String,
         ctx: &Context,
-        gl_window: &glutin::WindowedContext<glutin::PossiblyCurrent>,
+        gl_window: &GlutinWindowContext,
     ) -> Preparation {
         let mut disable_cursor = false;
         for plugin in &mut self.plugins {
