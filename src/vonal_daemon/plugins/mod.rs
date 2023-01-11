@@ -94,7 +94,7 @@ impl PluginManager {
 }
 
 pub struct Preparation {
-    /// if you move the cursor you have to hide the cursor as well
+    /// if you move the focus by arrow keys, you have to hide the cursor.
     /// otherwise the cursor will be jumping
     pub disable_cursor: bool,
     pub plugin_flow_control: PluginFlowControl,
