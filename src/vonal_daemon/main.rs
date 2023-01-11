@@ -34,7 +34,8 @@ fn start_socket(tx: &mpsc::Sender<UserEvent>) {
 
     if UnixStream::connect(&socket).is_ok() {
         tx.send(UserEvent::Quit).unwrap();
-        panic!("One daemon is already listening.")
+        eprintln!("One daemon is already listening.");
+        return
     }
 
     // Delete old socket if necessary
@@ -124,7 +125,9 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
             }
             command => println!("Got command: {:?}", command),
         },
-        Event::UserEvent(UserEvent::Quit) => process::exit(0),
+        Event::UserEvent(UserEvent::Quit) => {
+            control_flow.set_exit()
+        },
         _ => {}
     });
 }
