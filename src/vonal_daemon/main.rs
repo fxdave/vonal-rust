@@ -1,9 +1,11 @@
 #![feature(panic_info_message)]
+use std::error::Error;
 use std::{
-    fs, io::Read, os::unix::net::UnixListener, path::Path, process, sync::mpsc, time::Instant,
+    fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant,
 };
 use std::{os::unix::net::UnixStream, thread};
 
+use derive_more::{Display, Error};
 use windowing::GlutinWindowContext;
 use winit::event::{Event, StartCause};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
@@ -17,54 +19,56 @@ mod windowing;
 fn main() {
     // Set less distracting panic message
     std::panic::set_hook(Box::new(|info| match info.message() {
-        Some(message) => println!("Error: {}", message),
+        Some(message) => eprintln!("Error: {}", message),
         None => println!("{}", info),
     }));
 
     let (tx, rx) = mpsc::channel();
     let socket_thread = thread::spawn(move || {
-        start_socket(&tx);
+        if let Err(error) = start_socket(&tx) {
+            tx.send(UserEvent::Quit).unwrap();
+            eprintln!("Exiting because of this error: {:?}", error);
+            return;
+        }
     });
     start_gui(rx);
     socket_thread.join().expect("Couldn't join thread.");
 }
 
-fn start_socket(tx: &mpsc::Sender<UserEvent>) {
+fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
     let socket = Path::new(common::SOCKET_PATH);
 
-    if UnixStream::connect(&socket).is_ok() {
-        tx.send(UserEvent::Quit).unwrap();
-        eprintln!("One daemon is already listening.");
-        return
-    }
+    UnixStream::connect(&socket).or(Err(SocketError {
+        message: "One daemon is already listening".into(),
+    }))?;
 
     // Delete old socket if necessary
     if socket.exists() {
-        fs::remove_file(&socket).unwrap();
+        fs::remove_file(&socket)?;
     }
 
     // Bind to socket
-    let stream = if let Ok(stream) = UnixListener::bind(&socket) {
-        stream
-    } else {
-        panic!("failed to bind socket")
-    };
+    let stream = UnixListener::bind(&socket).or(Err(SocketError {
+        message: "Failed to bind socket.".into(),
+    }))?;
 
     println!("Server started, waiting for clients");
 
     // Iterate over clients, blocks if no client available
     for client in stream.incoming() {
+        let mut stream = client?;
         let mut buf = String::new();
-        match client {
-            Ok(mut stream) => {
-                stream.read_to_string(&mut buf).unwrap();
-                if tx.send(UserEvent::CliCommand(buf)).is_err() {
-                    break;
-                }
-            }
-            Err(_) => println!("error"),
-        }
+        stream.read_to_string(&mut buf).unwrap();
+        tx.send(UserEvent::CliCommand(buf)).unwrap();
     }
+
+    Ok(())
+}
+
+#[derive(Default, Debug, Display, Error)]
+#[display(fmt = "{}", message)]
+struct SocketError {
+    message: String,
 }
 
 fn start_gui(rx: mpsc::Receiver<UserEvent>) {
@@ -125,9 +129,7 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
             }
             command => println!("Got command: {:?}", command),
         },
-        Event::UserEvent(UserEvent::Quit) => {
-            control_flow.set_exit()
-        },
+        Event::UserEvent(UserEvent::Quit) => control_flow.set_exit(),
         _ => {}
     });
 }
