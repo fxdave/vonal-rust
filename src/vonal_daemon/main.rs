@@ -1,8 +1,6 @@
 #![feature(panic_info_message)]
 use std::error::Error;
-use std::{
-    fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant,
-};
+use std::{fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
 use std::{os::unix::net::UnixStream, thread};
 
 use derive_more::{Display, Error};
@@ -38,9 +36,11 @@ fn main() {
 fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
     let socket = Path::new(common::SOCKET_PATH);
 
-    UnixStream::connect(&socket).or(Err(SocketError {
-        message: "One daemon is already listening".into(),
-    }))?;
+    if UnixStream::connect(&socket).is_ok() {
+        return Err(Box::new(SocketError {
+            message: "One daemon is already listening".into(),
+        }));
+    }
 
     // Delete old socket if necessary
     if socket.exists() {
