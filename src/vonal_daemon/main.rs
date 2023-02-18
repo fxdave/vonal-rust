@@ -15,12 +15,6 @@ mod plugins;
 mod windowing;
 
 fn main() {
-    // Set less distracting panic message
-    std::panic::set_hook(Box::new(|info| match info.message() {
-        Some(message) => eprintln!("Error: {}", message),
-        None => println!("{}", info),
-    }));
-
     let (tx, rx) = mpsc::channel();
     let socket_thread = thread::spawn(move || {
         if let Err(error) = start_socket(&tx) {
