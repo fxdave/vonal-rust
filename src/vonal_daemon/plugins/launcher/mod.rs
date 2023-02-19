@@ -1,8 +1,11 @@
-use egui::{self, Button, Color32, Id, TextEdit, Ui};
+use egui::{self, Ui};
 use regex::Regex;
 use std::process::Command;
 
-use crate::{app::SEARCH_INPUT_ID, GlutinWindowContext};
+use crate::{
+    theme::list::{CreateList, ListState},
+    GlutinWindowContext,
+};
 
 use self::indexer::traits::{AppIndex, IndexApps};
 
@@ -11,100 +14,10 @@ use super::{Plugin, PluginFlowControl, Preparation};
 mod finder;
 mod indexer;
 
-#[derive(Default, PartialEq, Eq)]
-struct Counter(Option<usize>);
-
-impl Counter {
-    fn get(&self) -> Option<usize> {
-        self.0
-    }
-
-    fn next(&mut self, len: usize) {
-        self.0 = match self.0 {
-            _ if len == 0 => None,
-            None => Some(0),
-            Some(x) if x + 1 == len => Some(x),
-            Some(x) => Some(x + 1),
-        }
-    }
-
-    fn prev(&mut self, len: usize) {
-        self.0 = match self.0 {
-            _ if len == 0 => None,
-            None | Some(0) => None,
-            Some(x) => Some(x - 1),
-        }
-    }
-
-    fn reset(&mut self) {
-        self.0 = None
-    }
-}
-
-#[derive(Default)]
-pub struct Focus {
-    /// The main command
-    entry: Counter,
-    /// Only the sub commands
-    entry_action: Counter,
-}
-
-impl Focus {
-    fn entry(&self) -> Option<usize> {
-        return self.entry.get();
-    }
-
-    fn entry_action(&self) -> Option<usize> {
-        return self.entry_action.get();
-    }
-
-    fn set(&mut self, entry: Option<usize>, action: Option<usize>) {
-        self.entry = Counter(entry);
-        self.entry_action = Counter(action);
-    }
-
-    fn is_focused(&self, entry: usize, action: Option<usize>) -> bool {
-        return self.is_entry_focused(entry) && self.is_action_focused(action);
-    }
-
-    fn is_entry_focused(&self, entry: usize) -> bool {
-        return self.entry == Counter(Some(entry));
-    }
-
-    fn is_action_focused(&self, action: Option<usize>) -> bool {
-        return self.entry_action == Counter(action);
-    }
-
-    fn focus_next(&mut self, entries_len: usize) {
-        self.entry.next(entries_len);
-        self.entry_action.reset();
-    }
-
-    fn focus_prev(&mut self, entries_len: usize) {
-        self.entry.prev(entries_len);
-        self.entry_action.reset();
-    }
-
-    fn focus_next_action(&mut self, actions_len: usize) {
-        self.entry_action.next(actions_len);
-    }
-
-    fn focus_prev_action(&mut self, actions_len: usize) {
-        self.entry_action.prev(actions_len);
-    }
-
-    fn set_default(&mut self, entries_len: usize) {
-        self.entry = Counter(match self.entry.get() {
-            None if entries_len > 0 => Some(0),
-            x => x,
-        })
-    }
-}
-
 pub struct Launcher {
     finder: finder::Finder,
     results: Vec<AppIndex>,
-    focus: Focus,
+    list_state: ListState,
 }
 
 impl Launcher {
@@ -112,7 +25,7 @@ impl Launcher {
         Self {
             finder: Self::index_apps_and_get_finder(),
             results: Vec::new(),
-            focus: Focus::default(),
+            list_state: Default::default(),
         }
     }
 
@@ -125,9 +38,8 @@ impl Launcher {
         finder::Finder::new(indices)
     }
 
-    pub fn launch_focused_action(&self) -> Option<()> {
-        let exec = self.get_focused_command()?
-
+    pub fn launch_focused_action(&self, command: &str) -> Option<()> {
+        let exec = command
             /*
             * %f
             * A single file name, even if multiple files are selected.
@@ -185,46 +97,20 @@ impl Launcher {
             panic!("Unable to start app");
         }
     }
-
-    fn get_focused_command(&self) -> Option<&str> {
-        let entry = self.get_focused_entry()?;
-        Some(match self.focus.entry_action() {
-            Some(action) => &entry.actions.get(action)?.command,
-            None => &entry.exec,
-        })
-    }
-
-    fn get_focused_entry(&self) -> Option<&AppIndex> {
-        self.focus.entry().and_then(|i| self.results.get(i))
-    }
-
-    fn launch_action(&mut self, idx: usize, action: Option<usize>) {
-        self.focus.set(Some(idx), action);
-        self.launch_focused_action();
-    }
 }
 
 impl Plugin for Launcher {
     fn search(
         &mut self,
         query: &mut String,
-        ctx: &egui::Context,
+        ctx: &egui::Context, // TODO remove context because you can access it from ui.ctx()
         ui: &mut Ui,
         gl_window: &GlutinWindowContext,
     ) -> PluginFlowControl {
-        let enter_pressed = ctx.input().key_pressed(egui::Key::Enter);
+        let plugin_flow_control = PluginFlowControl::Continue;
 
         if query.is_empty() {
-            return PluginFlowControl::Continue;
-        }
-
-        if query.starts_with(",") {
-            let refresh_btn = ui
-                .add(Button::new("Refresh application cache").fill(Color32::from_white_alpha(16)));
-            if refresh_btn.clicked() || enter_pressed {
-                self.reindex_apps()
-            }
-            return PluginFlowControl::Continue;
+            return plugin_flow_control;
         }
 
         self.results = self
@@ -235,52 +121,40 @@ impl Plugin for Launcher {
             .cloned()
             .collect();
 
-        self.focus.set_default(self.results.len());
+        self.list_state.mutate(ctx, self.results.len(), |idx| {
+            self.results[idx].actions.len() + 1 // 1 primary 
+        });
 
-        // TODO: Cow will be faster then cloning always
-        self.results
-            .clone()
-            .iter()
-            .enumerate()
-            .for_each(|(idx, result)| {
-                ui.horizontal(|ui| {
-                    if self.focus.is_entry_focused(idx) {
-                        ui.colored_label(Color32::from_gray(255), "Launch");
-                    } else {
-                        ui.colored_label(Color32::from_gray(200), "Launch");
+        ui.list(self.list_state, |mut ui| {
+            if query.starts_with(",") {
+                ui.row(|mut ui| {
+                    if ui.primary_action("Refresh application cache").activated {
+                        self.reindex_apps()
                     }
+                });
+                return;
+            }
 
-                    let default_action_btn =
-                        ui.add(Button::new(&result.name).fill(Color32::from_black_alpha(0)));
-                    let focused = self.focus.is_focused(idx, None);
-                    if default_action_btn.clicked() || (focused && enter_pressed) {
-                        self.launch_action(idx, None);
+            for result in &self.results {
+                ui.row(|mut ui| {
+                    ui.label("Launch");
+
+                    if ui.primary_action(&result.name).activated {
+                        self.launch_focused_action(&result.exec);
                         query.clear();
                         gl_window.window().set_visible(false);
                     }
 
-                    for (action_idx, action) in result.actions.iter().enumerate() {
-                        let focused = self.focus.is_focused(idx, Some(action_idx));
-                        let color = match focused {
-                            true => Color32::from_white_alpha(16),
-                            false => Color32::from_white_alpha(8),
-                        };
-                        let action_btn = Button::new(&action.name).fill(color);
-                        if ui.add(action_btn).clicked() || (focused && enter_pressed) {
-                            self.launch_action(idx, Some(action_idx));
+                    for action in &result.actions {
+                        if ui.secondary_action(&action.name).activated {
+                            self.launch_focused_action(&action.command);
                             query.clear();
                             gl_window.window().set_visible(false);
                         }
                     }
-                });
-            });
-
-        // reset cursor to the end, so we can use arrow keys for navigation in results instead of in input
-        if let Some(mut state) = TextEdit::load_state(ui.ctx(), Id::new(SEARCH_INPUT_ID)) {
-            let ccursor = egui::text::CCursor::new(query.len());
-            state.set_ccursor_range(Some(egui::text::CCursorRange::one(ccursor)));
-            state.store(ui.ctx(), Id::new(SEARCH_INPUT_ID));
-        }
+                })
+            }
+        });
 
         PluginFlowControl::Continue
     }
@@ -292,28 +166,7 @@ impl Plugin for Launcher {
         ctx: &egui::Context,
         _gl_window: &GlutinWindowContext,
     ) -> Preparation {
-        let mut disable_cursor = false;
-        if ctx.input().key_pressed(egui::Key::ArrowDown) {
-            self.focus.focus_next(self.results.len());
-            disable_cursor = true;
-        }
-        if ctx.input().key_pressed(egui::Key::ArrowUp) {
-            self.focus.focus_prev(self.results.len());
-            disable_cursor = true;
-        }
-        if ctx.input().key_pressed(egui::Key::ArrowLeft) {
-            if let Some(entry) = self.focus.entry().and_then(|i| self.results.get(i)) {
-                self.focus.focus_prev_action(entry.actions.len());
-            }
-            disable_cursor = true;
-        }
-        if ctx.input().key_pressed(egui::Key::ArrowRight) {
-            if let Some(entry) = self.focus.entry().and_then(|i| self.results.get(i)) {
-                self.focus.focus_next_action(entry.actions.len());
-            }
-            disable_cursor = true;
-        }
-
+        let disable_cursor = self.list_state.before_search(ctx);
         Preparation {
             disable_cursor,
             plugin_flow_control: PluginFlowControl::Continue,
