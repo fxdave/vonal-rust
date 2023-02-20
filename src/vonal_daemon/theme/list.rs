@@ -11,12 +11,24 @@ pub struct ListState {
 }
 
 impl ListState {
+    /// row: n means the nth row is selected
+    /// row: -1 means no selection in the list,
+    /// which is good because it lets you edit the search bar without restrictions
+    pub fn new(row: i32) -> Self {
+        Self {
+            row,
+            col: 0,
+            activate: false,
+        }
+    }
+
     pub fn before_search(&mut self, ctx: &Context) -> bool {
         let input = ctx.input();
         return input.key_pressed(egui::Key::ArrowUp)
             || input.key_pressed(egui::Key::ArrowDown)
-            || input.key_pressed(egui::Key::ArrowLeft)
-            || input.key_pressed(egui::Key::ArrowRight);
+            || (self.row != -1
+                && (input.key_pressed(egui::Key::ArrowLeft)
+                    || input.key_pressed(egui::Key::ArrowRight)));
     }
 
     pub fn mutate(

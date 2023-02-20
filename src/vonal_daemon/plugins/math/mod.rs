@@ -5,15 +5,19 @@ use std::{
     thread,
 };
 
-use crate::GlutinWindowContext;
-
 use super::{Plugin, PluginFlowControl};
+use crate::{
+    theme::list::{CreateList, ListState},
+    utils::clipboard::copy_to_clipboard,
+    GlutinWindowContext,
+};
 
 #[derive(Default)]
 pub struct Math {
     promise: Option<Promise<CommandResult>>,
     previous_query: String,
     result: Option<CommandResult>,
+    list_state: ListState,
 }
 
 #[derive(Clone)]
@@ -24,7 +28,12 @@ struct CommandResult {
 
 impl Math {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            promise: Default::default(),
+            previous_query: Default::default(),
+            result: Default::default(),
+            list_state: ListState::new(-1),
+        }
     }
 }
 // TODO: async call, move inside textbox
@@ -87,9 +96,23 @@ impl Plugin for Math {
                 ui.colored_label(Color32::from_white_alpha(255), result.stdout.clone());
             }
             if !result.stderr.is_empty() {
-                ui.colored_label(Color32::from_white_alpha(128), result.stderr.clone());
+                ui.colored_label(Color32::from_white_alpha(64), result.stderr.clone());
             }
         }
+
+        let stdout_to_copy = self
+            .result
+            .as_ref()
+            .map(|x| x.stdout.to_string())
+            .unwrap_or_default();
+        self.list_state.mutate(ui.ctx(), 1, |_x| 1);
+        ui.list(self.list_state, |mut ui| {
+            ui.row(|mut ui| {
+                if ui.secondary_action("Copy").activated {
+                    copy_to_clipboard(&stdout_to_copy)
+                }
+            });
+        });
 
         self.previous_query = query.clone();
         PluginFlowControl::Break
@@ -98,11 +121,13 @@ impl Plugin for Math {
     fn before_search(
         &mut self,
         query: &mut String,
-        _ctx: &egui::Context,
+        ctx: &egui::Context,
         _: &GlutinWindowContext,
     ) -> super::Preparation {
+        let disable_cursor = self.list_state.before_search(ctx);
+
         super::Preparation {
-            disable_cursor: false,
+            disable_cursor,
             plugin_flow_control: if query.starts_with('=') {
                 PluginFlowControl::Break
             } else {

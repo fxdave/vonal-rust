@@ -14,6 +14,7 @@ mod common;
 mod plugins;
 mod windowing;
 mod theme;
+mod utils;
 
 fn main() {
     let (tx, rx) = mpsc::channel();
