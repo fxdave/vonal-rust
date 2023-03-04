@@ -31,7 +31,7 @@ impl ListState {
                     || input.key_pressed(egui::Key::ArrowRight)));
     }
 
-    pub fn mutate(
+    pub fn update(
         &mut self,
         ctx: &Context,
         rows_length: usize,

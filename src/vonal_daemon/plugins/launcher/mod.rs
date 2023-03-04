@@ -16,16 +16,14 @@ mod indexer;
 
 pub struct Launcher {
     finder: finder::Finder,
-    results: Vec<AppIndex>,
-    list_state: ListState,
+    list: ListState,
 }
 
 impl Launcher {
     pub fn new() -> Self {
         Self {
             finder: Self::index_apps_and_get_finder(),
-            results: Vec::new(),
-            list_state: Default::default(),
+            list: Default::default(),
         }
     }
 
@@ -38,7 +36,7 @@ impl Launcher {
         finder::Finder::new(indices)
     }
 
-    pub fn launch_focused_action(&self, command: &str) -> Option<()> {
+    pub fn run(&self, command: &str) -> Option<()> {
         let exec = command
             /*
             * %f
@@ -86,16 +84,21 @@ impl Launcher {
         let exec = deprecated_switches_regex.replace_all(&exec, "");
         let spaces_regex = Regex::new(r"\s+").unwrap();
         let exec = spaces_regex.replace_all(&exec, " ");
-
-        if let Ok(_c) = Command::new("/bin/sh")
+        Command::new("/bin/sh")
             .arg("-c")
             .arg(&exec.to_string())
             .spawn()
-        {
-            Some(())
-        } else {
-            panic!("Unable to start app");
-        }
+            .ok()?;
+        Some(())
+    }
+
+    fn find_apps(&self, query: &str) -> Vec<AppIndex> {
+        self.finder
+            .find(query)
+            .into_iter()
+            .map(|app_match| app_match.index)
+            .cloned()
+            .collect()
     }
 }
 
@@ -106,26 +109,15 @@ impl Plugin for Launcher {
         ui: &mut Ui,
         gl_window: &GlutinWindowContext,
     ) -> PluginFlowControl {
-        let plugin_flow_control = PluginFlowControl::Continue;
+        let apps = self.find_apps(query);
 
-        if query.is_empty() {
-            return plugin_flow_control;
-        }
-
-        self.results = self
-            .finder
-            .find(query)
-            .into_iter()
-            .map(|app_match| app_match.index)
-            .cloned()
-            .collect();
-
-        self.list_state.mutate(ui.ctx(), self.results.len(), |idx| {
-            self.results[idx].actions.len() + 1 // 1 primary 
+        self.list.update(ui.ctx(), apps.len(), |idx| {
+            apps[idx].actions.len() + 1 // 1 primary action
         });
 
-        ui.list(self.list_state, |mut ui| {
+        ui.list(self.list, |mut ui| {
             if query.starts_with(",") {
+                // Show plugin settings
                 ui.row(|mut ui| {
                     if ui.primary_action("Refresh application cache").activated {
                         self.reindex_apps()
@@ -134,19 +126,19 @@ impl Plugin for Launcher {
                 return;
             }
 
-            for result in &self.results {
+            for app in &apps {
                 ui.row(|mut ui| {
                     ui.label("Launch");
 
-                    if ui.primary_action(&result.name).activated {
-                        self.launch_focused_action(&result.exec);
+                    if ui.primary_action(&app.name).activated {
+                        self.run(&app.exec);
                         query.clear();
                         gl_window.window().set_visible(false);
                     }
 
-                    for action in &result.actions {
+                    for action in &app.actions {
                         if ui.secondary_action(&action.name).activated {
-                            self.launch_focused_action(&action.command);
+                            self.run(&action.command);
                             query.clear();
                             gl_window.window().set_visible(false);
                         }
@@ -165,7 +157,7 @@ impl Plugin for Launcher {
         ctx: &egui::Context,
         _gl_window: &GlutinWindowContext,
     ) -> Preparation {
-        let disable_cursor = self.list_state.before_search(ctx);
+        let disable_cursor = self.list.before_search(ctx);
         Preparation {
             disable_cursor,
             plugin_flow_control: PluginFlowControl::Continue,

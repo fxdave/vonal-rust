@@ -104,7 +104,7 @@ impl Plugin for Math {
             .as_ref()
             .map(|x| x.stdout.to_string())
             .unwrap_or_default();
-        self.list_state.mutate(ui.ctx(), 1, |_x| 1);
+        self.list_state.update(ui.ctx(), 1, |_x| 1);
         ui.list(self.list_state, |mut ui| {
             ui.row(|mut ui| {
                 if ui.secondary_action("Copy").activated {

@@ -55,6 +55,11 @@ impl PluginManager {
         ui.horizontal(|ui| {
             ui.add_space(15.);
             ui.vertical(|ui| {
+                // don't search when there's nothing to search
+                if query.is_empty() {
+                    return;
+                }
+
                 for i in &mut self.plugins {
                     let flow_control = i.search(query, ui, gl_window);
                     if let PluginFlowControl::Break = flow_control {
