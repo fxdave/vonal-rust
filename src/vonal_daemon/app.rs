@@ -62,7 +62,6 @@ impl App {
             });
 
             // Let plugins render their results
-            // esetleg legyen itt a ctx?
             self.plugin_manager.search(&mut self.query, ui, gl_window);
 
             // reset window height
@@ -74,7 +73,6 @@ impl App {
                 };
                 gl_window.resize(size);
                 gl_window.window().set_inner_size(size);
-                //gl_window.window().set_min_inner_size(Some(size));
                 gl_window.window().set_max_inner_size(Some(size));
             }
         });
