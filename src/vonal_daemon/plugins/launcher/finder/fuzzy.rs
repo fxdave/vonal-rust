@@ -58,66 +58,53 @@ fn get_without_uncommon_chars(query: &str, name: &str) -> (String, usize) {
     (without_uncommon_chars, number_of_deleted_chars)
 }
 
-/// This struct represents the found segments matching to the query, and a position number for marking where was the first match.
+/// This struct represents the found segments matching to the query,
+/// and a position number for marking where was the first match.
+#[derive(Clone)]
 struct SegmentsInfo {
-    first_match: usize,
+    first_match: Option<usize>,
     missmatch_count: usize,
     segments: Vec<String>,
 }
 
-impl Clone for SegmentsInfo {
-    fn clone(&self) -> Self {
-        Self {
-            first_match: self.first_match,
-            missmatch_count: self.missmatch_count,
-            segments: self.segments.clone(),
-        }
-    }
-}
-
-/// Matches query with the name and returns the `SegmentsInfo`
+/// Match query with the name and return the `SegmentsInfo`
 fn get_matching_segments_from_index(query: &str, name: &str, from: usize) -> SegmentsInfo {
-    let mut query_iter = query.chars();
-    #[allow(clippy::cast_possible_truncation)]
-    let mut name_iter = name[from..].chars();
-    let mut first_match = 0;
-    let mut name_counter = 0;
-
     let mut segments: Vec<String> = vec![];
-
-    let mut next_query_char = query_iter.next();
-    let mut next_name_char = name_iter.next();
-
+    let mut first_match_pos = None;
+    let mut visited_name_chars = 0;
     let mut missmatch_counter = 0;
 
-    while let (Some(q), Some(n)) = (next_query_char, next_name_char) {
+    #[allow(clippy::cast_possible_truncation)]
+    let mut name_iter = name[from..].chars();
+    let mut query_iter = query.chars();
+
+    let mut actual_query_char = query_iter.next();
+    let mut actual_name_char = name_iter.next();
+
+    while let (Some(q), Some(n)) = (actual_query_char, actual_name_char) {
         if q.to_ascii_lowercase() == n.to_ascii_lowercase() {
-            first_match = if first_match == 0 {
-                name_counter
-            } else {
-                first_match
-            };
+            if first_match_pos.is_none() {
+                first_match_pos = Some(visited_name_chars)
+            }
 
             match segments.last_mut() {
-                Some(s) => {
-                    s.push(q);
-                }
+                Some(s) => s.push(q),
                 None => segments.push(q.to_string()),
             };
 
-            next_query_char = query_iter.next();
+            actual_query_char = query_iter.next();
         } else if let Some(s) = segments.last() {
             if !s.is_empty() {
                 segments.push(String::from(""));
             }
             missmatch_counter += 1;
         }
-        next_name_char = name_iter.next();
-        name_counter += 1;
+        actual_name_char = name_iter.next();
+        visited_name_chars += 1;
     }
 
     SegmentsInfo {
-        first_match: first_match + from,
+        first_match: first_match_pos.map(|pos| pos + from),
         segments,
         missmatch_count: missmatch_counter,
     }
@@ -135,15 +122,19 @@ fn calculate_goodness(segments: &[String]) -> usize {
     len_of_biggest_segment * 2 + overall_length
 }
 
-/// Starts the matching from multiple positions and returns the best segments
+/// Start the matching from multiple positions and return the best segments info
 fn get_matching_segments(query: &str, name: &str) -> SegmentsInfo {
     let mut segments_description = get_matching_segments_from_index(query, name, 0);
     let mut best_segments_description = segments_description.clone();
     let mut best_goodness = calculate_goodness(&best_segments_description.segments);
 
+    // It doesn't visit every letter since that's done in the [get_matching_segments_from_index] function.
+    // If we don't have any matches for pos 0 then we won't have any matches for pos 1,2,3,.. either
+    // if we have a match for pos 5 then we don't get the same match for position 6,
+    // that's why we only check the segments for (last match position) + 1 until no match.
     while !segments_description.segments.is_empty() {
-        segments_description =
-            get_matching_segments_from_index(query, name, segments_description.first_match + 1);
+        let from_idx = segments_description.first_match.unwrap_or(0) + 1;
+        segments_description = get_matching_segments_from_index(query, name, from_idx);
 
         let goodness = calculate_goodness(&segments_description.segments);
         if goodness > best_goodness {
@@ -188,7 +179,7 @@ fn calculate_length_goodness(name_length: usize) -> f64 {
     1f64 / name_length as f64
 }
 
-/// Represents some information about the final result which can be used to sort our dataset
+/// Represent some information about the final result which can be used to sort our dataset
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub struct FuzzyInfo {
@@ -208,7 +199,7 @@ pub fn get_fuzzy_info(query: &str, name: &str) -> FuzzyInfo {
     let (query, number_of_deleted_chars) = get_without_uncommon_chars(query, name);
 
     let new_length = min(name.len(), MAX_NAME_LENGTH);
-    let name = &name[..new_length].to_owned();
+    let name = &name[..new_length];
 
     if query.is_empty() || name.is_empty() {
         return FuzzyInfo {
@@ -218,8 +209,15 @@ pub fn get_fuzzy_info(query: &str, name: &str) -> FuzzyInfo {
     }
 
     let segments_info = get_matching_segments(&query, name);
+    if segments_info.first_match.is_none() {
+        return FuzzyInfo {
+            segments: segments_info.segments,
+            fitness: 0.,
+        };
+    }
+
     let first_match_goodness =
-        calculate_first_match_goodness(segments_info.first_match, MAX_NAME_LENGTH);
+        calculate_first_match_goodness(segments_info.first_match.unwrap(), MAX_NAME_LENGTH);
     let segment_goodness = calculate_segment_goodness(
         &segments_info.segments,
         query.len() + number_of_deleted_chars,
