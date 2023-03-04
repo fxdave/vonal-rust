@@ -41,7 +41,6 @@ impl Plugin for Math {
     fn search(
         &mut self,
         query: &mut String,
-        _ctx: &egui::Context,
         ui: &mut egui::Ui,
         _: &GlutinWindowContext,
     ) -> PluginFlowControl {

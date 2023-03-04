@@ -103,7 +103,6 @@ impl Plugin for Launcher {
     fn search(
         &mut self,
         query: &mut String,
-        ctx: &egui::Context, // TODO remove context because you can access it from ui.ctx()
         ui: &mut Ui,
         gl_window: &GlutinWindowContext,
     ) -> PluginFlowControl {
@@ -121,7 +120,7 @@ impl Plugin for Launcher {
             .cloned()
             .collect();
 
-        self.list_state.mutate(ctx, self.results.len(), |idx| {
+        self.list_state.mutate(ui.ctx(), self.results.len(), |idx| {
             self.results[idx].actions.len() + 1 // 1 primary 
         });
 
