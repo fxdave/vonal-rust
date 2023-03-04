@@ -1,6 +1,7 @@
 use super::indexer::traits::AppIndex;
 
 mod fuzzy;
+mod limited_selection_sort;
 
 struct FuzzyAppInfo {
     pub index: AppIndex,
@@ -12,9 +13,24 @@ pub struct AppMatch<'a> {
     fuzzy_info: fuzzy::FuzzyInfo,
 }
 
+impl<'a> PartialEq for AppMatch<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.fuzzy_info.fitness.eq(&other.fuzzy_info.fitness)
+    }
+}
+impl<'a> PartialOrd for AppMatch<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.fuzzy_info
+            .fitness
+            .partial_cmp(&other.fuzzy_info.fitness)
+    }
+}
+
 pub struct Finder {
     cache: Vec<FuzzyAppInfo>,
 }
+
+const MAXIMUM_NUMBER_OF_RESULTS: usize = 10;
 
 impl Finder {
     pub fn new<I: IntoIterator<Item = AppIndex>>(indices: I) -> Self {
@@ -31,7 +47,6 @@ impl Finder {
         }
     }
 
-    /// TODO: This can be way faster..
     pub fn find(&self, query: &str) -> Vec<AppMatch<'_>> {
         let mut results: Vec<_> = self
             .cache
@@ -42,8 +57,8 @@ impl Finder {
             })
             .collect();
 
-        results.sort_unstable_by(|a, b| b.fuzzy_info.fitness.total_cmp(&a.fuzzy_info.fitness));
-        results.truncate(10);
+        limited_selection_sort::sort(&mut results, MAXIMUM_NUMBER_OF_RESULTS);
+        results.truncate(MAXIMUM_NUMBER_OF_RESULTS);
         results
     }
 }
