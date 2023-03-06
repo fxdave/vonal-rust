@@ -25,13 +25,14 @@ Currently, there are 2 plugins:
   - shortcuts:
     - Up, Down, Left, Right, Enter
   - example commands:
-    - `chr` will find chromium
+    - `chr` finds chromium
+    - `chr github.com` finds chromium and on enter, it opens it with `github.com`
     - `,` is for settings like reload application cache
 - **Calculator plugin:** a python proxy
   - trigger: `=`
   - example commands:
-    - `= sin(radians(90))` will show the result of `1.0`
-    - `= [i for i in range(1000) if i %99 == 0]` will show the numbers between 0 and 999 that are dividable by 99
+    - `= sin(radians(90))` prints `1.0`
+    - `= [i for i in range(1000) if i %99 == 0]` shows the numbers between 0 and 999 that are dividable by 99
 
 ## Contribution
 
