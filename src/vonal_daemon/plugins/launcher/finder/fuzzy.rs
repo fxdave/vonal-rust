@@ -51,11 +51,11 @@ fn get_without_uncommon_chars(query: &str, name: &str) -> (String, usize) {
 
     let difference: HashSet<&InCaseSensitiveChar> = a.difference(&b).collect();
 
-    let mut without_uncommon_chars = query.to_string();
-    without_uncommon_chars.retain(|c| !difference.contains(&InCaseSensitiveChar(c)));
+    let mut query_without_uncommon_chars = query.to_string();
+    query_without_uncommon_chars.retain(|c| !difference.contains(&InCaseSensitiveChar(c)));
 
-    let number_of_deleted_chars = query.len() - without_uncommon_chars.len();
-    (without_uncommon_chars, number_of_deleted_chars)
+    let number_of_deleted_chars = difference.len();
+    (query_without_uncommon_chars, number_of_deleted_chars)
 }
 
 /// This struct represents the found segments matching to the query,
@@ -65,6 +65,30 @@ struct SegmentsInfo {
     first_match: Option<usize>,
     missmatch_count: usize,
     segments: Vec<String>,
+}
+
+impl SegmentsInfo {
+    fn get_fitness(&self) -> i32 {
+        // 1. bigger cardinality wins
+        // 2. larger groups wins
+        let mut fitness = self
+            .segments
+            .iter()
+            .map(|s| {
+                let len = s.len() as i32;
+                len + (len - 1)
+            })
+            .sum::<i32>()
+            * 1000;
+
+        // 3. punish late match
+        fitness -= self.first_match.unwrap_or_default() as i32 * 30;
+
+        // 4. smaller distances wins
+        fitness -= self.missmatch_count as i32 * 10;
+
+        return fitness;
+    }
 }
 
 /// Match query with the name and return the `SegmentsInfo`
@@ -101,6 +125,16 @@ fn get_matching_segments_from_index(query: &str, name: &str, from: usize) -> Seg
         }
         actual_name_char = name_iter.next();
         visited_name_chars += 1;
+    }
+
+    let last_is_empty = if let Some(l) = segments.last() {
+        l.is_empty()
+    } else {
+        false
+    };
+
+    if last_is_empty {
+        segments.remove(segments.len() - 1);
     }
 
     SegmentsInfo {
@@ -146,45 +180,12 @@ fn get_matching_segments(query: &str, name: &str) -> SegmentsInfo {
     best_segments_description
 }
 
-#[allow(clippy::cast_precision_loss)]
-fn calculate_segment_goodness(segments: &Vec<String>, query_length: usize) -> f64 {
-    let segments_length: usize = segments.iter().fold(0usize, |acc, s| acc + s.len());
-    let segments_length_goodness: f64 = segments_length as f64 / query_length as f64; // [0,1]
-    let segments_fragment_goodness: f64 = 1.0 / segments.len() as f64; // (0;1]
-    segments_length_goodness * segments_fragment_goodness
-}
-
-#[allow(clippy::cast_precision_loss)]
-fn calculate_common_char_goodness(
-    number_of_deleted_chars: usize,
-    modified_query_length: usize,
-) -> f64 {
-    let del: f64 = number_of_deleted_chars as f64; // deleted chars
-    let ol: f64 = modified_query_length as f64 + del; // original length
-    (ol / (del + 1.0)) / ol // (0;1]
-}
-
-#[allow(clippy::cast_precision_loss)]
-fn calculate_missmatch_goodness(number_of_missmatch: usize) -> f64 {
-    1.0 / (number_of_missmatch as f64 + 1.0)
-}
-
-#[allow(clippy::cast_precision_loss)]
-fn calculate_first_match_goodness(first_match: usize, max_name_length: usize) -> f64 {
-    1f64 - first_match as f64 / max_name_length as f64 // [0;1]
-}
-
-#[allow(clippy::cast_precision_loss)]
-fn calculate_length_goodness(name_length: usize) -> f64 {
-    1f64 / name_length as f64
-}
-
 /// Represent some information about the final result which can be used to sort our dataset
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub struct FuzzyInfo {
     pub segments: Vec<String>,
-    pub fitness: f64,
+    pub fitness: i32,
 }
 
 const MAX_NAME_LENGTH: usize = 127;
@@ -196,7 +197,7 @@ const MAX_NAME_LENGTH: usize = 127;
 /// For e.g: We want to match `clomium` with `chromium`, this will give the segments: `["c", "omium"]`
 ///
 pub fn get_fuzzy_info(query: &str, name: &str) -> FuzzyInfo {
-    let (query, number_of_deleted_chars) = get_without_uncommon_chars(query, name);
+    let (query, _) = get_without_uncommon_chars(query, name);
 
     let new_length = min(name.len(), MAX_NAME_LENGTH);
     let name = &name[..new_length];
@@ -204,7 +205,7 @@ pub fn get_fuzzy_info(query: &str, name: &str) -> FuzzyInfo {
     if query.is_empty() || name.is_empty() {
         return FuzzyInfo {
             segments: vec![],
-            fitness: 0f64,
+            fitness: 0,
         };
     }
 
@@ -212,28 +213,17 @@ pub fn get_fuzzy_info(query: &str, name: &str) -> FuzzyInfo {
     if segments_info.first_match.is_none() {
         return FuzzyInfo {
             segments: segments_info.segments,
-            fitness: 0.,
+            fitness: 0,
         };
     }
 
-    let first_match_goodness =
-        calculate_first_match_goodness(segments_info.first_match.unwrap(), MAX_NAME_LENGTH);
-    let segment_goodness = calculate_segment_goodness(
-        &segments_info.segments,
-        query.len() + number_of_deleted_chars,
-    );
-    let common_char_goodness = calculate_common_char_goodness(number_of_deleted_chars, query.len());
-    let missmatch_goodness = calculate_missmatch_goodness(segments_info.missmatch_count);
-    let length_goodness = calculate_length_goodness(name.len());
+    let mut fitness = segments_info.get_fitness();
+
+    fitness -= name.len() as i32;
 
     FuzzyInfo {
+        fitness,
         segments: segments_info.segments,
-        fitness: (segment_goodness
-            + common_char_goodness
-            + missmatch_goodness
-            + length_goodness
-            + first_match_goodness)
-            / 5f64,
     }
 }
 
@@ -248,8 +238,7 @@ mod tests {
         let info = get_fuzzy_info(&query, &name);
 
         assert_eq!(info.segments, vec!["ch", "omium"]);
-        assert!(info.fitness > 0.0);
-        assert!(info.fitness <= 1f64);
+        assert!(info.fitness > 0);
     }
 
     #[test]
@@ -302,6 +291,43 @@ mod tests {
         println!("{}", info1.fitness);
         println!("{}", info2.fitness);
 
+        assert!(info1.fitness < info2.fitness);
+    }
+
+    #[test]
+    fn test_fitness5() {
+        let info1 = get_fuzzy_info("clomium", "alikialiki");
+        let info2 = get_fuzzy_info("clomium", "Chromium/usr/bin/chromium %UWeb Browser");
+        println!("{}", info1.fitness);
+        println!("{}", info2.fitness);
+
+        assert!(info1.fitness < info2.fitness);
+    }
+
+    #[test]
+    fn test_fitness6() {
+        let info1 = get_fuzzy_info("clomiumbrowser", "DevhelpdevhelpAPI Documentation Browser");
+        let info2 = get_fuzzy_info("clomiumbrowser", "Chromium/usr/bin/chromium %UWeb Browser");
+        println!("{}", info1.fitness);
+        println!("{}", info2.fitness);
+        assert!(info1.fitness < info2.fitness);
+    }
+
+    #[test]
+    fn test_fitness7() {
+        let info1 = get_fuzzy_info("clomium", "commcomm");
+        let info2 = get_fuzzy_info("clomium", "Chromium/usr/bin/chromium %UWeb Browser");
+        println!("{}", info1.fitness);
+        println!("{}", info2.fitness);
+        assert!(info1.fitness < info2.fitness);
+    }
+
+    #[test]
+    fn test_fitness8() {
+        let info1 = get_fuzzy_info("clomium", "gcloud-crc32cgcloud-crc32c");
+        let info2 = get_fuzzy_info("clomium", "Chromium/usr/bin/chromium %UWeb Browser");
+        println!("{}", info1.fitness);
+        println!("{}", info2.fitness);
         assert!(info1.fitness < info2.fitness);
     }
 

@@ -3,11 +3,7 @@ use super::indexer::traits::AppIndex;
 mod fuzzy;
 mod limited_selection_sort;
 
-struct FuzzyAppInfo {
-    pub index: AppIndex,
-    pub fuzzybuzz: String,
-}
-
+#[derive(Debug)]
 pub struct AppMatch<'a> {
     pub index: &'a AppIndex,
     fuzzy_info: fuzzy::FuzzyInfo,
@@ -27,33 +23,45 @@ impl<'a> PartialOrd for AppMatch<'a> {
 }
 
 pub struct Finder {
-    cache: Vec<FuzzyAppInfo>,
+    cache: Vec<AppIndex>,
 }
 
 const MAXIMUM_NUMBER_OF_RESULTS: usize = 10;
 
 impl Finder {
-    pub fn new<I: IntoIterator<Item = AppIndex>>(indices: I) -> Self {
-        Self {
-            cache: indices
-                .into_iter()
-                .map(|index| FuzzyAppInfo {
-                    fuzzybuzz: index.name.clone()
-                        + &index.exec
-                        + index.generic_name.as_ref().unwrap_or(&String::new()),
-                    index,
-                })
-                .collect(),
-        }
+    pub fn new(indices: Vec<AppIndex>) -> Self {
+        Self { cache: indices }
     }
 
     pub fn find(&self, query: &str) -> Vec<AppMatch<'_>> {
         let mut results: Vec<_> = self
             .cache
             .iter()
-            .map(|app| AppMatch {
-                index: &app.index,
-                fuzzy_info: fuzzy::get_fuzzy_info(query, &app.fuzzybuzz),
+            .map(|app| {
+                let generic_name = app.generic_name.clone().unwrap_or_default();
+                let name_match = fuzzy::get_fuzzy_info(query, &app.name);
+                let mut generic_name_match = fuzzy::get_fuzzy_info(query, &generic_name);
+                let mut exec_match = fuzzy::get_fuzzy_info(query, &app.exec);
+
+                // 1. match by name is preferred
+                generic_name_match.fitness -= 10;
+                exec_match.fitness -= 10;
+
+                let mut fuzzy_info = [name_match, generic_name_match, exec_match]
+                    .into_iter()
+                    .max_by_key(|i| i.fitness)
+                    .unwrap();
+
+                // 2. quality correction
+                let has_action = !app.actions.is_empty();
+                let has_generic_name = app.generic_name.is_some();
+                fuzzy_info.fitness += if has_action { 10 } else { 0 };
+                fuzzy_info.fitness += if has_generic_name { 10 } else { 0 };
+
+                AppMatch {
+                    index: &app,
+                    fuzzy_info,
+                }
             })
             .collect();
 
