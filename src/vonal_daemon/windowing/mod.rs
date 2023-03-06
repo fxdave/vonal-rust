@@ -145,7 +145,7 @@ impl GlutinWindowContext {
             let x_ok = position.x <= pointer.0 && pointer.0 < (position.x + size.width as i32);
             let y_ok = position.y <= pointer.1 && pointer.1 < (position.y + size.height as i32);
 
-            return x_ok && y_ok;
+            x_ok && y_ok
         });
 
         monitors.next()

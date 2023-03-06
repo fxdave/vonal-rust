@@ -61,7 +61,7 @@ impl Plugin for Math {
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .arg("-c")
-                    .arg(format!("from math import *\nprint({})", query_stripped))
+                    .arg(format!("from math import *\nprint({query_stripped})"))
                     .spawn();
 
                 match call {
@@ -76,7 +76,7 @@ impl Plugin for Math {
                     Err(err) => {
                         sender.send(CommandResult {
                             stdout: String::new(),
-                            stderr: format!("{:?}", err),
+                            stderr: format!("{err:?}"),
                         });
                         ctx.request_repaint();
                     }

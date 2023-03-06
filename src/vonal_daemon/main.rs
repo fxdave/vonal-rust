@@ -21,8 +21,7 @@ fn main() {
     let socket_thread = thread::spawn(move || {
         if let Err(error) = start_socket(&tx) {
             tx.send(UserEvent::Quit).unwrap();
-            eprintln!("Exiting because of this error: {:?}", error);
-            return;
+            eprintln!("Exiting because of this error: {error:?}");
         }
     });
     start_gui(rx);
@@ -32,7 +31,7 @@ fn main() {
 fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
     let socket = Path::new(common::SOCKET_PATH);
 
-    if UnixStream::connect(&socket).is_ok() {
+    if UnixStream::connect(socket).is_ok() {
         return Err(Box::new(SocketError {
             message: "One daemon is already listening".into(),
         }));
@@ -40,11 +39,11 @@ fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
 
     // Delete old socket if necessary
     if socket.exists() {
-        fs::remove_file(&socket)?;
+        fs::remove_file(socket)?;
     }
 
     // Bind to socket
-    let stream = UnixListener::bind(&socket).or(Err(SocketError {
+    let stream = UnixListener::bind(socket).or(Err(SocketError {
         message: "Failed to bind socket.".into(),
     }))?;
 
@@ -62,7 +61,7 @@ fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
 }
 
 #[derive(Default, Debug, Display, Error)]
-#[display(fmt = "{}", message)]
+#[display(fmt = "{message}")]
 struct SocketError {
     message: String,
 }
@@ -123,7 +122,7 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
                 let show = !gl_window.window().is_visible().unwrap_or(false);
                 show_window(&gl_window, show);
             }
-            command => println!("Got command: {:?}", command),
+            command => println!("Got command: {command:?}"),
         },
         Event::UserEvent(UserEvent::Quit) => control_flow.set_exit(),
         _ => {}

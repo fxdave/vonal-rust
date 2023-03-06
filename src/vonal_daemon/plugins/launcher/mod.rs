@@ -86,7 +86,7 @@ impl Launcher {
         let exec = spaces_regex.replace_all(&exec, " ");
         Command::new("/bin/sh")
             .arg("-c")
-            .arg(&exec.to_string())
+            .arg(exec.to_string())
             .spawn()
             .ok()?;
         Some(())
@@ -116,7 +116,7 @@ impl Plugin for Launcher {
         });
 
         ui.list(self.list, |mut ui| {
-            if query.starts_with(",") {
+            if query.starts_with(',') {
                 // Show plugin settings
                 ui.row(|mut ui| {
                     if ui.primary_action("Refresh application cache").activated {

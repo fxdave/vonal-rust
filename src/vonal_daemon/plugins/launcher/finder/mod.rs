@@ -59,7 +59,7 @@ impl Finder {
                 fuzzy_info.fitness += if has_generic_name { 10 } else { 0 };
 
                 AppMatch {
-                    index: &app,
+                    index: app,
                     fuzzy_info,
                 }
             })

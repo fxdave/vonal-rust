@@ -87,7 +87,7 @@ impl SegmentsInfo {
         // 4. smaller distances wins
         fitness -= self.missmatch_count as i32 * 10;
 
-        return fitness;
+        fitness
     }
 }
 
@@ -246,9 +246,9 @@ mod tests {
         let info1 = get_fuzzy_info("clo", "chromium");
         let info2 = get_fuzzy_info("clo", "chrootas");
         let info3 = get_fuzzy_info("clo", "chromapr");
-        println!("{:?}", info1);
-        println!("{:?}", info2);
-        println!("{:?}", info3);
+        println!("{info1:?}");
+        println!("{info2:?}");
+        println!("{info3:?}");
 
         assert_eq!(info1.segments, vec!["c", "o"]);
         assert_eq!(info1.fitness, info2.fitness);

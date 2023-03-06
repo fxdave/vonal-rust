@@ -24,11 +24,11 @@ impl ListState {
 
     pub fn before_search(&mut self, ctx: &Context) -> bool {
         let input = ctx.input();
-        return input.key_pressed(egui::Key::ArrowUp)
+        input.key_pressed(egui::Key::ArrowUp)
             || input.key_pressed(egui::Key::ArrowDown)
             || (self.row != -1
                 && (input.key_pressed(egui::Key::ArrowLeft)
-                    || input.key_pressed(egui::Key::ArrowRight)));
+                    || input.key_pressed(egui::Key::ArrowRight)))
     }
 
     pub fn update(
@@ -143,7 +143,7 @@ impl<'u> ListUi<'u> {
         }
     }
 
-    pub fn row(&mut self, callback: impl FnOnce(RowUi) -> ()) {
+    pub fn row(&mut self, callback: impl FnOnce(RowUi)) {
         let focused = self.list_state.row == self.row_i;
         self.row_i += 1;
         self.ui.horizontal(|ui| {
@@ -154,11 +154,11 @@ impl<'u> ListUi<'u> {
 }
 
 pub trait CreateList {
-    fn list<'u>(&'u mut self, list_state: ListState, callback: impl FnOnce(ListUi<'u>) -> ());
+    fn list<'u>(&'u mut self, list_state: ListState, callback: impl FnOnce(ListUi<'u>));
 }
 
 impl CreateList for Ui {
-    fn list<'u>(&'u mut self, list_state: ListState, callback: impl FnOnce(ListUi<'u>) -> ()) {
+    fn list<'u>(&'u mut self, list_state: ListState, callback: impl FnOnce(ListUi<'u>)) {
         callback(ListUi::new(self, list_state));
     }
 }

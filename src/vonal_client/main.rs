@@ -9,8 +9,8 @@ mod common;
 fn main() {
     // Set less distracting panic message
     std::panic::set_hook(Box::new(|info| match info.message() {
-        Some(message) => println!("Error: {}", message),
-        None => println!("{}", info),
+        Some(message) => println!("Error: {message}"),
+        None => println!("{info}"),
     }));
 
     // `args` returns the arguments passed to the program
@@ -22,7 +22,7 @@ fn main() {
 
     // Connect to socket
     let mut stream =
-        UnixStream::connect(&socket).expect("Vonal is not running. You have to start it first.");
+        UnixStream::connect(socket).expect("Vonal is not running. You have to start it first.");
 
     // Send message
     assert!(

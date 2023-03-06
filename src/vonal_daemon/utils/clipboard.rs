@@ -29,8 +29,8 @@ fn run(cmd: &str, args: &[&str], input: &str) {
 fn is_program_in_path(program: &str) -> bool {
     env::var("PATH")
         .unwrap_or("/".into())
-        .split(":")
-        .map(|dir| format!("{}/{}", dir, program))
+        .split(':')
+        .map(|dir| format!("{dir}/{program}"))
         .filter_map(|path| fs::metadata(path).ok())
         .next()
         .is_some()

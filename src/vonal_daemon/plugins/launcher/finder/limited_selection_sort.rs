@@ -1,7 +1,7 @@
 /// sort the array and stop when it finds the first N biggest element
 pub fn sort<T: PartialOrd>(arr: &mut [T], limit: usize) {
     for i in 0..limit {
-        let max_idx = get_max_idx(&arr, i);
+        let max_idx = get_max_idx(arr, i);
         arr.swap(i, max_idx);
     }
 }
@@ -13,7 +13,7 @@ fn get_max_idx<T: PartialOrd>(arr: &[T], from: usize) -> usize {
             max_idx = i
         }
     }
-    return max_idx;
+    max_idx
 }
 
 #[cfg(test)]
