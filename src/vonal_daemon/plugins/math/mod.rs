@@ -123,10 +123,10 @@ impl Plugin for Math {
         ctx: &egui::Context,
         _: &GlutinWindowContext,
     ) -> super::Preparation {
-        let disable_cursor = self.list_state.before_search(ctx);
+        let preparation = self.list_state.before_search(ctx);
 
         super::Preparation {
-            disable_cursor,
+            disable_cursor: preparation.disable_cursor,
             plugin_flow_control: if query.starts_with('=') {
                 PluginFlowControl::Break
             } else {
