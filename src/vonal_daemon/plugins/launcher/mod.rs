@@ -128,9 +128,9 @@ impl Plugin for Launcher {
         ctx: &egui::Context,
         _gl_window: &GlutinWindowContext,
     ) -> Preparation {
-        let disable_cursor = self.list.before_search(ctx);
+        let preparation = self.list.before_search(ctx);
         Preparation {
-            disable_cursor,
+            disable_cursor: preparation.disable_cursor,
             plugin_flow_control: PluginFlowControl::Continue,
         }
     }

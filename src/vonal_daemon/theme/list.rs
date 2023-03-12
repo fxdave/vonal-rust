@@ -10,6 +10,10 @@ pub struct ListState {
     activate: bool,
 }
 
+pub struct ListPreparation {
+    pub disable_cursor: bool,
+}
+
 impl ListState {
     /// row: n means the nth row is selected
     /// row: -1 means no selection in the list,
@@ -22,15 +26,25 @@ impl ListState {
         }
     }
 
-    pub fn before_search(&mut self, ctx: &Context) -> bool {
+    pub fn before_search(&mut self, ctx: &Context) -> ListPreparation {
         let input = ctx.input();
-        input.key_pressed(egui::Key::ArrowUp)
+        let disable_cursor = input.key_pressed(egui::Key::ArrowUp)
             || input.key_pressed(egui::Key::ArrowDown)
             || (self.row != -1
                 && (input.key_pressed(egui::Key::ArrowLeft)
-                    || input.key_pressed(egui::Key::ArrowRight)))
+                    || input.key_pressed(egui::Key::ArrowRight)));
+
+        ListPreparation { disable_cursor }
     }
 
+    /// # List state update.
+    ///
+    /// ## Dimension update:
+    /// Because egui is not a declarative UI, it would require a repaint to get the dimension of the list.
+    /// So we tell the dimensions to the list before rendering.
+    ///
+    /// ## focus / action update:
+    /// It reads the context, searching for pressed keys, and it updates the UI according to the keys.
     pub fn update(
         &mut self,
         ctx: &Context,
