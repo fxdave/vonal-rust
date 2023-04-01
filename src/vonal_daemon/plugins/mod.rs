@@ -1,6 +1,9 @@
 use egui::{Context, Ui};
 
-use crate::GlutinWindowContext;
+use crate::{
+    config::{ConfigBuilder, ConfigError},
+    GlutinWindowContext,
+};
 
 #[cfg(feature = "launcher_plugin")]
 mod launcher;
@@ -16,6 +19,28 @@ pub enum PluginFlowControl {
 }
 
 pub trait Plugin {
+    /// Example:
+    /// ```
+    /// fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
+    ///     // primitive types
+    ///     self.some_boolean = builder.get_or_create("some_boolean", false)?;
+    ///     self.some_integer = builder.get_or_create("some_integer", 12)?;
+    ///     self.some_float = builder.get_or_create("some_float", 0.3)?;
+    ///     // objects
+    ///     self.some_color = builder.get_or_create("some_color", Color32::from_rgb(12, 12, 12))?;
+    ///     self.some_string = builder.get_or_create("some_string", String::from("something"))?;
+    ///     self.some_array = builder.get_or_create("some_array", vec![1, 2, 3])?;
+    ///     // table
+    ///     let mut map = toml::map::Map::new();
+    ///     map.insert(String::from("some_color_in_map"), Color32::from_rgb(12, 12, 12).to_config());
+    ///     map.insert(String::from("some_number_in_map"), 42.to_config());
+    ///     self.some_map = builder.get_or_create("some_map", map)?;
+    ///     Ok(builder)
+    /// }
+    /// ```
+    fn configure(&mut self, builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
+        Ok(builder)
+    }
     fn search(
         &mut self,
         query: &mut String,
@@ -37,6 +62,7 @@ pub trait Plugin {
 
 pub struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
+    config_padding: f32,
 }
 
 impl PluginManager {
@@ -48,12 +74,21 @@ impl PluginManager {
                 #[cfg(feature = "launcher_plugin")]
                 Box::new(launcher::Launcher::new()),
             ],
+            config_padding: 15.
         }
+    }
+
+    pub fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
+        self.config_padding = builder.get_or_create("padding", 15.)?;
+        for i in &mut self.plugins {
+            builder = i.configure(builder)?
+        }
+        Ok(builder)
     }
 
     pub fn search(&mut self, query: &mut String, ui: &mut Ui, gl_window: &GlutinWindowContext) {
         ui.horizontal(|ui| {
-            ui.add_space(15.);
+            ui.add_space(self.config_padding);
             ui.vertical(|ui| {
                 // don't search when there's nothing to search
                 if query.is_empty() {

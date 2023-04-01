@@ -1,18 +1,30 @@
-use egui::{vec2, Color32, FontId, FontSelection, Id, Image, TextEdit};
+use egui::{vec2, Color32, FontId, FontSelection, Id, Image, RichText, TextEdit};
 use egui_extras::RetainedImage;
 use winit::dpi::PhysicalSize;
 
-use crate::{plugins::PluginManager, GlutinWindowContext};
+use crate::{
+    config::{ConfigBuilder, ConfigError},
+    plugins::PluginManager,
+    GlutinWindowContext,
+};
+
+#[derive(Default)]
+struct AppConfig {
+    background: Color32,
+}
 
 pub struct App {
+    config: AppConfig,
     query: String,
     prompt_icon: RetainedImage,
     plugin_manager: PluginManager,
+    error: Option<String>,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
+            config: AppConfig::default(),
             query: String::new(),
             prompt_icon: egui_extras::RetainedImage::from_svg_bytes(
                 "./assets/right.svg",
@@ -20,6 +32,7 @@ impl App {
             )
             .unwrap(),
             plugin_manager: PluginManager::new(),
+            error: None,
         }
     }
 }
@@ -29,11 +42,7 @@ pub const SEARCH_INPUT_ID: &str = "#search_input";
 impl App {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    pub fn update(
-        &mut self,
-        ctx: &egui::Context,
-        gl_window: &GlutinWindowContext,
-    ) {
+    pub fn update(&mut self, ctx: &egui::Context, gl_window: &GlutinWindowContext) {
         // reset size
         gl_window.resize(PhysicalSize {
             width: 10,
@@ -42,7 +51,10 @@ impl App {
 
         // Set wallpaper
         let frame = egui::containers::Frame {
-            fill: Color32::from_rgb(16, 19, 22),
+            fill: match self.error {
+                Some(_) => Color32::RED,
+                None => self.config.background,
+            },
             ..Default::default()
         };
 
@@ -56,13 +68,11 @@ impl App {
 
         // render window
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                self.render_mode_indicator_icon(ui, ctx);
-                self.render_search_bar(ui, ctx, preparation.disable_cursor);
-            });
-
-            // Let plugins render their results
-            self.plugin_manager.search(&mut self.query, ui, gl_window);
+            if let Some(error) = self.error.as_ref() {
+                self.render_error_screen(ui, error);
+            } else {
+                self.render_search_screen(ui, ctx, preparation, gl_window);
+            }
 
             // reset window height
             if let Some(monitor) = gl_window.window().current_monitor() {
@@ -76,6 +86,45 @@ impl App {
                 gl_window.window().set_max_inner_size(Some(size));
             }
         });
+    }
+
+    pub fn set_error(&mut self, error: Option<String>) {
+        self.error = error;
+    }
+
+    pub fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
+        self.config.background =
+            builder.get_or_create("background", Color32::from_rgb(16, 19, 22))?;
+        self.plugin_manager.configure(builder)
+    }
+
+    fn render_search_screen(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        preparation: crate::plugins::Preparation,
+        gl_window: &GlutinWindowContext,
+    ) {
+        ui.horizontal(|ui| {
+            self.render_mode_indicator_icon(ui, ctx);
+            self.render_search_bar(ui, ctx, preparation.disable_cursor);
+        });
+
+        // Let plugins render their results
+        self.plugin_manager.search(&mut self.query, ui, gl_window);
+    }
+
+    fn render_error_screen(&self, ui: &mut egui::Ui, error: &String) {
+        ui.add_space(15.);
+        ui.horizontal(|ui| {
+            ui.add_space(15.);
+            ui.label(
+                RichText::new(error)
+                    .color(Color32::WHITE)
+                    .font(FontId::proportional(20.)),
+            );
+        });
+        ui.add_space(15.);
     }
 
     fn render_search_bar(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, disable_cursor: bool) {
@@ -103,11 +152,7 @@ impl App {
         );
     }
 
-    fn handle_escape(
-        &mut self,
-        ctx: &egui::Context,
-        window: &GlutinWindowContext,
-    ) {
+    fn handle_escape(&mut self, ctx: &egui::Context, window: &GlutinWindowContext) {
         if ctx.input().key_pressed(egui::Key::Escape) {
             if self.query.is_empty() {
                 window.window().set_visible(false);

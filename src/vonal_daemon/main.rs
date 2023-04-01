@@ -3,29 +3,50 @@ use std::error::Error;
 use std::{fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
 use std::{os::unix::net::UnixStream, thread};
 
+use config::watcher::ConfigEvent;
+use config::ConfigBuilder;
 use derive_more::{Display, Error};
 use windowing::GlutinWindowContext;
 use winit::event::{Event, StartCause};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
+use winit::platform::run_return::EventLoopExtRunReturn;
+
+use crate::config::ConfigError;
 
 mod app;
 #[path = "../common.rs"]
 mod common;
+mod config;
 mod plugins;
-mod windowing;
 mod theme;
 mod utils;
+mod windowing;
 
 fn main() {
+    let mut app = app::App::new();
+
     let (tx, rx) = mpsc::channel();
-    let socket_thread = thread::spawn(move || {
-        if let Err(error) = start_socket(&tx) {
-            tx.send(UserEvent::Quit).unwrap();
+    let tx_clone = tx.clone();
+
+    // start listening for vonalc commands
+    thread::spawn(move || {
+        if let Err(error) = start_socket(&tx_clone) {
+            tx_clone.send(UserEvent::Quit).unwrap();
             eprintln!("Exiting because of this error: {error:?}");
         }
     });
-    start_gui(rx);
-    socket_thread.join().expect("Couldn't join thread.");
+
+    // start listening for config file changes
+    let config_builder = app.configure(ConfigBuilder::new_safe()).unwrap();
+    config_builder.save().unwrap();
+    thread::spawn(move || {
+        if let Err(error) = start_config_watcher(&tx) {
+            tx.send(UserEvent::Quit).unwrap();
+            eprintln!("Config watcher is closing: {error:?}");
+        }
+    });
+
+    start_gui(app, rx);
 }
 
 fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
@@ -53,8 +74,8 @@ fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
     for client in stream.incoming() {
         let mut stream = client?;
         let mut buf = String::new();
-        stream.read_to_string(&mut buf).unwrap();
-        tx.send(UserEvent::CliCommand(buf)).unwrap();
+        stream.read_to_string(&mut buf)?;
+        tx.send(UserEvent::CliCommand(buf))?;
     }
 
     Ok(())
@@ -66,12 +87,11 @@ struct SocketError {
     message: String,
 }
 
-fn start_gui(rx: mpsc::Receiver<UserEvent>) {
-    let event_loop: EventLoop<UserEvent> = EventLoopBuilder::with_user_event().build();
+fn start_gui(mut app: app::App, rx: mpsc::Receiver<UserEvent>) {
+    let mut event_loop: EventLoop<UserEvent> = EventLoopBuilder::with_user_event().build();
     let (gl_window, gl) = windowing::create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl, None);
-    let mut app = app::App::new();
 
     let proxy = event_loop.create_proxy();
 
@@ -81,9 +101,21 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
         }
     });
 
-    event_loop.run(move |event, _, control_flow| match event {
+    event_loop.run_return(|event, _, control_flow| {
+        handle_platform_event(event, control_flow, &mut app, &mut egui_glow, &gl_window)
+    });
+}
+
+fn handle_platform_event(
+    event: Event<UserEvent>,
+    control_flow: &mut ControlFlow,
+    app: &mut app::App,
+    egui_glow: &mut egui_glow::EguiGlow,
+    gl_window: &GlutinWindowContext,
+) {
+    match event {
         Event::RedrawRequested(_) => {
-            *control_flow = redraw(&mut app, &mut egui_glow, &gl_window);
+            *control_flow = redraw(app, egui_glow, &gl_window);
         }
         Event::WindowEvent { event, .. } => {
             use winit::event::WindowEvent;
@@ -125,8 +157,30 @@ fn start_gui(rx: mpsc::Receiver<UserEvent>) {
             command => println!("Got command: {command:?}"),
         },
         Event::UserEvent(UserEvent::Quit) => control_flow.set_exit(),
+        Event::UserEvent(UserEvent::ConfigEvent(event)) => match event {
+            ConfigEvent::Created => println!("Config file created"),
+            ConfigEvent::Deleted => println!("Config file deleted"),
+            ConfigEvent::Modified => {
+                println!("Config file modified");
+                let result = ConfigBuilder::new().and_then(|builder| app.configure(builder));
+                match result {
+                    Ok(_) => {
+                        println!("Config has reloaded");
+                        app.set_error(None);
+                    }
+                    Err(ConfigError::BadEntryError { name }) => {
+                        app.set_error(Some(format!("Wrong config file entry at {}", name)))
+                    }
+                    Err(ConfigError::ParseError) => {
+                        app.set_error(Some(format!("Config syntax error")))
+                    }
+                }
+                gl_window.window().request_redraw();
+            }
+            ConfigEvent::None => (),
+        },
         _ => {}
-    });
+    }
 }
 
 fn hide_window(gl_window: &GlutinWindowContext) {
@@ -169,8 +223,19 @@ fn redraw(
     control_flow
 }
 
+fn start_config_watcher(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
+    let mut watcher = config::watcher::Watcher::new()?;
+
+    for event in watcher.get_stream() {
+        tx.send(UserEvent::ConfigEvent(event))?;
+    }
+
+    Ok(())
+}
+
 #[derive(Debug)]
 enum UserEvent {
     Quit,
     CliCommand(String),
+    ConfigEvent(ConfigEvent),
 }
