@@ -107,7 +107,7 @@ impl App {
         preparation: crate::plugins::Preparation,
         gl_window: &GlutinWindowContext,
     ) {
-        ui.horizontal(|ui| {
+        ui.horizontal_top(|ui| {
             self.render_mode_indicator_icon(ui, ctx);
             self.render_search_bar(ui, ctx, preparation.disable_cursor);
         });

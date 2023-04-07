@@ -113,7 +113,7 @@ impl PluginManager {
     }
 
     pub fn search(&mut self, query: &mut String, ui: &mut Ui, gl_window: &GlutinWindowContext) {
-        ui.horizontal(|ui| {
+        ui.horizontal_top(|ui| {
             ui.add_space(self.config_padding);
             ui.vertical(|ui| {
                 // don't search when there's nothing to search
