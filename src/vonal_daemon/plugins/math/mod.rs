@@ -53,24 +53,16 @@ impl Plugin for Math {
             return PluginFlowControl::Continue;
         }
 
-        println!("1");
         if self.previous_query != *query {
             self.promise = None;
         }
 
-        println!("2");
         let ctx = ui.ctx().clone();
-        println!("3");
         let query_stripped = query.trim_start_matches(&self.config_prefix).to_string();
-        println!("4");
         let config_python_header = self.config_python_header.clone();
-        println!("5");
         let promise = self.promise.get_or_insert_with(|| {
-            println!("6");
             let (sender, promise) = Promise::new();
-            println!("7");
             thread::spawn(move || {
-                println!("8");
                 let call = Command::new("python")
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
