@@ -37,7 +37,7 @@ impl Math {
             result: Default::default(),
             list_state: ListState::new(-1),
             config_prefix: Default::default(),
-            config_python_header: Default::default()
+            config_python_header: Default::default(),
         }
     }
 }
@@ -53,29 +53,46 @@ impl Plugin for Math {
             return PluginFlowControl::Continue;
         }
 
+        println!("1");
         if self.previous_query != *query {
             self.promise = None;
         }
 
+        println!("2");
         let ctx = ui.ctx().clone();
-        let query_stripped = query.strip_prefix(&self.config_prefix).unwrap().to_string();
+        println!("3");
+        let query_stripped = query.trim_start_matches(&self.config_prefix).to_string();
+        println!("4");
         let config_python_header = self.config_python_header.clone();
+        println!("5");
         let promise = self.promise.get_or_insert_with(|| {
+            println!("6");
             let (sender, promise) = Promise::new();
+            println!("7");
             thread::spawn(move || {
+                println!("8");
                 let call = Command::new("python")
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .arg("-c")
-                    .arg(format!("{}\nprint({})", config_python_header, query_stripped))
+                    .arg(format!(
+                        "{}\nprint({})",
+                        config_python_header, query_stripped
+                    ))
                     .spawn();
 
                 match call {
                     Ok(child) => {
-                        let out = child.wait_with_output().unwrap();
-                        sender.send(CommandResult {
-                            stdout: String::from_utf8_lossy(&out.stdout).into(),
-                            stderr: String::from_utf8_lossy(&out.stderr).into(),
+                        let out = child.wait_with_output();
+                        sender.send(match out {
+                            Ok(out) => CommandResult {
+                                stdout: String::from_utf8_lossy(&out.stdout).into(),
+                                stderr: String::from_utf8_lossy(&out.stderr).into(),
+                            },
+                            Err(err) => CommandResult {
+                                stdout: String::new(),
+                                stderr: err.to_string(),
+                            },
                         });
                         ctx.request_repaint();
                     }
@@ -144,7 +161,8 @@ impl Plugin for Math {
     fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
         builder.group("math_plugin", |builder| {
             self.config_prefix = builder.get_or_create("prefix", "=".to_string())?;
-            self.config_python_header = builder.get_or_create("python_header", "from math import *".to_string())?;
+            self.config_python_header =
+                builder.get_or_create("python_header", "from math import *".to_string())?;
             Ok(())
         })?;
 
