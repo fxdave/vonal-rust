@@ -12,6 +12,7 @@ use crate::{
 pub struct AppConfig {
     pub background: Color32,
     pub scale_factor: f32,
+    pub show_mode_indicator: bool,
 }
 
 pub struct App {
@@ -97,6 +98,7 @@ impl App {
         self.config.background =
             builder.get_or_create("background", Color32::from_rgb(16, 19, 22))?;
         self.config.scale_factor = builder.get_or_create("scale_factor", 1.0)?;
+        self.config.show_mode_indicator = builder.get_or_create("show_mode_indicator", true)?;
         self.plugin_manager.configure(builder)
     }
 
@@ -144,6 +146,11 @@ impl App {
     }
 
     fn render_mode_indicator_icon(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if !self.config.show_mode_indicator {
+            ui.add_space(15.);
+            return
+        }
+
         let size = self.prompt_icon.size_vec2();
         ui.add_sized(
             [50., 50.],
