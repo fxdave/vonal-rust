@@ -168,9 +168,14 @@ fn handle_platform_event(
                         println!("Config has reloaded");
                         app.set_error(None);
                     }
-                    Err(ConfigError::BadEntryError { name }) => {
-                        app.set_error(Some(format!("Wrong config file entry at {}", name)))
-                    }
+                    Err(ConfigError::BadEntryError {
+                        message: Some(message),
+                        ..
+                    }) => app.set_error(Some(message)),
+                    Err(ConfigError::BadEntryError {
+                        name,
+                        message: None,
+                    }) => app.set_error(Some(format!("Wrong config file entry at {name}."))),
                     Err(ConfigError::ParseError) => {
                         app.set_error(Some(format!("Config syntax error")))
                     }

@@ -48,7 +48,10 @@ impl ConfigBuilder {
         value: T,
     ) -> Result<T, ConfigError> {
         let entry = self.config.entry(name).or_insert_with(|| value.to_config());
-        T::from_config(entry).ok_or(ConfigError::BadEntryError { name })
+        T::from_config(entry).ok_or(ConfigError::BadEntryError {
+            name,
+            message: None,
+        })
     }
 }
 
@@ -58,6 +61,7 @@ pub enum ConfigError {
     BadEntryError {
         #[allow(dead_code)]
         name: &'static str,
+        message: Option<String>,
     },
 }
 

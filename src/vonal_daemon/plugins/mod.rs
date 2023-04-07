@@ -60,29 +60,55 @@ pub trait Plugin {
     }
 }
 
+#[derive(Default)]
 pub struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
     config_padding: f32,
+    config_plugins: Vec<String>,
 }
 
 impl PluginManager {
     pub fn new() -> Self {
-        Self {
-            plugins: vec![
-                #[cfg(feature = "math_plugin")]
-                Box::new(math::Math::new()),
-                #[cfg(feature = "launcher_plugin")]
-                Box::new(launcher::Launcher::new()),
-            ],
-            config_padding: 15.
-        }
+        Self::default()
     }
 
     pub fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
         self.config_padding = builder.get_or_create("padding", 15.)?;
+        let plugins = builder.get_or_create(
+            "plugins",
+            vec![
+                #[cfg(feature = "math_plugin")]
+                "math_plugin".to_string(),
+                #[cfg(feature = "launcher_plugin")]
+                "launcher_plugin".to_string(),
+            ],
+        )?;
+
+        if self.config_plugins != plugins {
+            self.plugins = Vec::new();
+
+            for plugin in &plugins {
+                match plugin.as_str() {
+                    #[cfg(feature = "math_plugin")]
+                    "math_plugin" => self.plugins.push(Box::new(math::Math::new())),
+                    #[cfg(feature = "launcher_plugin")]
+                    "launcher_plugin" => self.plugins.push(Box::new(launcher::Launcher::new())),
+                    plugin_name => return Err(ConfigError::BadEntryError {
+                        name: "plugins",
+                        message: Some(format!(
+                            "The specified plugin named \"{plugin_name}\" is unknown or vonal is not compiled with it."
+                        )),
+                    }),
+                }
+            }
+
+            self.config_plugins = plugins;
+        }
+
         for i in &mut self.plugins {
             builder = i.configure(builder)?
         }
+
         Ok(builder)
     }
 
