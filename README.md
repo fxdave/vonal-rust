@@ -34,6 +34,10 @@ Currently, there are 2 plugins:
     - `= sin(radians(90))` prints `1.0`
     - `= [i for i in range(1000) if i %99 == 0]` shows the numbers between 0 and 999 that are dividable by 99
 
+## Configuration
+The configuration file is created on the fly to `~/.config/vonal/config.toml`.
+You can see every existing config options, there.
+
 ## Contribution
 
 Please let me know if you would like to use it. It would motivate me to work on the project.
