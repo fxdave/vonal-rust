@@ -206,9 +206,10 @@ fn redraw(
     egui_glow: &mut egui_glow::EguiGlow,
     gl_window: &GlutinWindowContext,
 ) -> ControlFlow {
+    let scale_factor = gl_window.window().scale_factor() as f32 * app.config.scale_factor;
     let repaint_after = egui_glow.run(gl_window.window(), |egui_ctx| {
         #[allow(clippy::cast_possible_truncation)]
-        egui_ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
+        egui_ctx.set_pixels_per_point(scale_factor);
         app.update(egui_ctx, gl_window);
     });
     let control_flow = if repaint_after.is_zero() {

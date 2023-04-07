@@ -9,12 +9,13 @@ use crate::{
 };
 
 #[derive(Default)]
-struct AppConfig {
-    background: Color32,
+pub struct AppConfig {
+    pub background: Color32,
+    pub scale_factor: f32,
 }
 
 pub struct App {
-    config: AppConfig,
+    pub config: AppConfig,
     query: String,
     prompt_icon: RetainedImage,
     plugin_manager: PluginManager,
@@ -95,6 +96,7 @@ impl App {
     pub fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
         self.config.background =
             builder.get_or_create("background", Color32::from_rgb(16, 19, 22))?;
+        self.config.scale_factor = builder.get_or_create("scale_factor", 1.0)?;
         self.plugin_manager.configure(builder)
     }
 
