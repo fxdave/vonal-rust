@@ -8,35 +8,28 @@ use crate::{
     GlutinWindowContext,
 };
 
-use self::indexer::traits::{AppIndex, IndexApps};
+use self::indexer::traits::AppIndex;
 
 use super::{Plugin, PluginFlowControl, Preparation};
 
 mod finder;
 mod indexer;
 
+#[derive(Default)]
 pub struct Launcher {
     finder: finder::Finder,
     list: ListState,
     config_prefix: String,
+    config_index_path: bool,
 }
 
 impl Launcher {
     pub fn new() -> Self {
-        Self {
-            finder: Self::index_apps_and_get_finder(),
-            list: Default::default(),
-            config_prefix: Default::default(),
-        }
+        Default::default()
     }
 
     pub fn reindex_apps(&mut self) {
-        self.finder = Self::index_apps_and_get_finder()
-    }
-
-    fn index_apps_and_get_finder() -> finder::Finder {
-        let indices = indexer::Indexer::default().index();
-        finder::Finder::new(indices)
+        self.finder = self.index_apps_and_get_finder()
     }
 
     pub fn run(&self, command: &str, args: &str) -> Option<()> {
@@ -51,6 +44,11 @@ impl Launcher {
             .spawn()
             .ok()?;
         Some(())
+    }
+
+    fn index_apps_and_get_finder(&self) -> finder::Finder {
+        let indices = indexer::Indexer::default().index(self.config_index_path);
+        finder::Finder::new(indices)
     }
 
     fn find_apps(&self, query: &str) -> Vec<AppIndex> {
@@ -143,8 +141,10 @@ impl Plugin for Launcher {
     }
 
     fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
-        builder.group("launcher_plugin", |mut builder| {
+        builder.group("launcher_plugin", |builder| {
             self.config_prefix = builder.get_or_create("prefix", "".to_string())?;
+            self.config_index_path = builder.get_or_create("index_path", true)?;
+            self.reindex_apps();
             Ok(())
         })?;
         Ok(builder)

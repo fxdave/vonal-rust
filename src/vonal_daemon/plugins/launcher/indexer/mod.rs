@@ -1,6 +1,6 @@
 use egui::epaint::ahash::{HashMap, HashMapExt};
 
-use self::traits::{AppIndex, IndexApps};
+use self::traits::AppIndex;
 
 pub mod desktop;
 pub mod path;
@@ -9,10 +9,14 @@ pub mod traits;
 #[derive(Default)]
 pub struct Indexer {}
 
-impl IndexApps for Indexer {
+impl Indexer {
     /// index apps with multiple indexers, and deduplicate the result
-    fn index(&self) -> Vec<AppIndex> {
+    pub fn index(&self, index_path: bool) -> Vec<AppIndex> {
         let desktop_indices = desktop::index();
+        if !index_path {
+            return desktop_indices;
+        }
+
         let path_indices = path::index();
 
         let mut final_results = HashMap::new();

@@ -57,7 +57,7 @@ impl ConfigBuilder {
     pub fn group(
         &mut self,
         name: &'static str,
-        build: impl FnOnce(ConfigBuilder) -> Result<(), ConfigError>,
+        build: impl FnOnce(&mut ConfigBuilder) -> Result<(), ConfigError>,
     ) -> Result<(), ConfigError> {
         let config = self
             .config
@@ -66,7 +66,11 @@ impl ConfigBuilder {
             .cloned()
             .unwrap_or_default();
 
-        build(Self { config })?;
+        let mut builder = Self { config };
+        build(&mut builder)?;
+
+        self.config
+            .insert(name.to_string(), Value::Table(builder.config));
 
         Ok(())
     }

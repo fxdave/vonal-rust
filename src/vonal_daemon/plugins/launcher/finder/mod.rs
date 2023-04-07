@@ -22,6 +22,7 @@ impl<'a> PartialOrd for AppMatch<'a> {
     }
 }
 
+#[derive(Default)]
 pub struct Finder {
     cache: Vec<AppIndex>,
 }
