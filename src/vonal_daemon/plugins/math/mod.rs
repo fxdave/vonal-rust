@@ -7,6 +7,7 @@ use std::{
 
 use super::{Plugin, PluginFlowControl};
 use crate::{
+    config::{ConfigBuilder, ConfigError},
     theme::list::{CreateList, ListState},
     utils::clipboard::copy_to_clipboard,
     GlutinWindowContext,
@@ -18,6 +19,8 @@ pub struct Math {
     previous_query: String,
     result: Option<CommandResult>,
     list_state: ListState,
+    config_prefix: String,
+    config_python_header: String,
 }
 
 #[derive(Clone)]
@@ -33,6 +36,8 @@ impl Math {
             previous_query: Default::default(),
             result: Default::default(),
             list_state: ListState::new(-1),
+            config_prefix: Default::default(),
+            config_python_header: Default::default()
         }
     }
 }
@@ -44,7 +49,7 @@ impl Plugin for Math {
         ui: &mut egui::Ui,
         _: &GlutinWindowContext,
     ) -> PluginFlowControl {
-        if !query.starts_with('=') {
+        if !query.starts_with(&self.config_prefix) {
             return PluginFlowControl::Continue;
         }
 
@@ -53,7 +58,8 @@ impl Plugin for Math {
         }
 
         let ctx = ui.ctx().clone();
-        let query_stripped = query.strip_prefix('=').unwrap().to_string();
+        let query_stripped = query.strip_prefix(&self.config_prefix).unwrap().to_string();
+        let config_python_header = self.config_python_header.clone();
         let promise = self.promise.get_or_insert_with(|| {
             let (sender, promise) = Promise::new();
             thread::spawn(move || {
@@ -61,7 +67,7 @@ impl Plugin for Math {
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .arg("-c")
-                    .arg(format!("from math import *\nprint({query_stripped})"))
+                    .arg(format!("{}\nprint({})", config_python_header, query_stripped))
                     .spawn();
 
                 match call {
@@ -133,5 +139,15 @@ impl Plugin for Math {
                 PluginFlowControl::Continue
             },
         }
+    }
+
+    fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
+        builder.group("math_plugin", |builder| {
+            self.config_prefix = builder.get_or_create("prefix", "=".to_string())?;
+            self.config_python_header = builder.get_or_create("python_header", "from math import *".to_string())?;
+            Ok(())
+        })?;
+
+        Ok(builder)
     }
 }
