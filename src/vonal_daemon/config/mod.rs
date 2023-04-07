@@ -53,6 +53,23 @@ impl ConfigBuilder {
             message: None,
         })
     }
+
+    pub fn group(
+        &mut self,
+        name: &'static str,
+        build: impl FnOnce(ConfigBuilder) -> Result<(), ConfigError>,
+    ) -> Result<(), ConfigError> {
+        let config = self
+            .config
+            .get(name)
+            .and_then(|value| value.as_table())
+            .cloned()
+            .unwrap_or_default();
+
+        build(Self { config })?;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]

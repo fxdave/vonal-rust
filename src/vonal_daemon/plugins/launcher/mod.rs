@@ -3,6 +3,7 @@ use regex::Regex;
 use std::process::Command;
 
 use crate::{
+    config::{ConfigBuilder, ConfigError},
     theme::list::{CreateList, ListState},
     GlutinWindowContext,
 };
@@ -17,6 +18,7 @@ mod indexer;
 pub struct Launcher {
     finder: finder::Finder,
     list: ListState,
+    config_prefix: String,
 }
 
 impl Launcher {
@@ -24,6 +26,7 @@ impl Launcher {
         Self {
             finder: Self::index_apps_and_get_finder(),
             list: Default::default(),
+            config_prefix: Default::default(),
         }
     }
 
@@ -79,7 +82,11 @@ impl Plugin for Launcher {
         ui: &mut Ui,
         gl_window: &GlutinWindowContext,
     ) -> PluginFlowControl {
-        let (keyword, args) = Self::split_query(query);
+        if !query.starts_with(&self.config_prefix) {
+            return PluginFlowControl::Continue;
+        }
+        let keywords = query.trim_start_matches(&self.config_prefix);
+        let (keyword, args) = Self::split_query(keywords);
         let apps = self.find_apps(&keyword);
 
         self.list.update(ui.ctx(), apps.len(), |idx| {
@@ -133,5 +140,13 @@ impl Plugin for Launcher {
             disable_cursor: preparation.disable_cursor,
             plugin_flow_control: PluginFlowControl::Continue,
         }
+    }
+
+    fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
+        builder.group("launcher_plugin", |mut builder| {
+            self.config_prefix = builder.get_or_create("prefix", "".to_string())?;
+            Ok(())
+        })?;
+        Ok(builder)
     }
 }
