@@ -1,5 +1,3 @@
-#![feature(panic_info_message)]
-
 use common::SOCKET_PATH;
 use std::{env, io::Write, os::unix::net::UnixStream, path::Path};
 
@@ -7,12 +5,6 @@ use std::{env, io::Write, os::unix::net::UnixStream, path::Path};
 mod common;
 
 fn main() {
-    // Set less distracting panic message
-    std::panic::set_hook(Box::new(|info| match info.message() {
-        Some(message) => println!("Error: {message}"),
-        None => println!("{info}"),
-    }));
-
     // `args` returns the arguments passed to the program
     let args: Vec<String> = env::args().collect();
     let socket = Path::new(SOCKET_PATH);

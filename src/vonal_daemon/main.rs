@@ -1,4 +1,3 @@
-#![feature(panic_info_message)]
 use std::error::Error;
 use std::{fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
 use std::{os::unix::net::UnixStream, thread};
