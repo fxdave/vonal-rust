@@ -1,5 +1,7 @@
 # Vonal global search
 
+![Preview](./preview.png)
+
 Vonal is a modern alternative to `dmenu`, `rofi`, `albert` etc...
 Ideal for tiling window managers.
 
