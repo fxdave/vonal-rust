@@ -86,26 +86,29 @@ impl Plugin for Launcher {
         let keywords = query.trim_start_matches(&self.config_prefix);
         let (keyword, args) = Self::split_query(keywords);
         let apps = self.find_apps(&keyword);
+        let show_settings = keyword.starts_with(',');
+
+        if show_settings {
+            self.list.update(ui.ctx(), 1, |_| 1);
+            ui.list(self.list, |mut ui| {
+                ui.row(|mut ui| {
+                    if ui.primary_action("Refresh application cache").activated {
+                        self.reindex_apps()
+                    }
+                });
+            });
+
+            return PluginFlowControl::Continue;
+        }
 
         self.list.update(ui.ctx(), apps.len(), |idx| {
             apps[idx].actions.len() + 1 // 1 primary action
         });
 
         ui.list(self.list, |mut ui| {
-            if keyword.starts_with(',') {
-                // Show plugin settings
-                ui.row(|mut ui| {
-                    if ui.primary_action("Refresh application cache").activated {
-                        self.reindex_apps()
-                    }
-                });
-                return;
-            }
-
             for app in &apps {
                 ui.row(|mut ui| {
                     ui.label("Launch");
-
                     if ui.primary_action(&app.name).activated {
                         self.run(&app.exec, &args);
                         query.clear();

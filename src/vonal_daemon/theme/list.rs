@@ -110,30 +110,52 @@ impl<'u> RowUi<'u> {
         }
     }
     pub fn label(&mut self, name: &str) {
-        if self.focused {
-            self.ui.colored_label(Color32::from_gray(255), name);
-        } else {
-            self.ui.colored_label(Color32::from_gray(200), name);
-        }
+        self.ui.colored_label(Color32::from_gray(200), name);
     }
     pub fn primary_action(&mut self, name: &str) -> RowUiAction {
         let focused = self.focused && self.list_state.col == self.col_i;
+        let bg = Color32::from_black_alpha(0);
+        let fg = match focused {
+            true => Color32::from_gray(255),
+            false => Color32::from_gray(200),
+        };
         self.col_i += 1;
+        let activated = self
+            .ui
+            .scope(|ui| {
+                ui.visuals_mut().override_text_color = Some(fg);
+                let action_btn = Button::new(name).fill(bg);
+                let activated =
+                    ui.add(action_btn).clicked() || (focused && self.list_state.activate);
+                return activated;
+            })
+            .inner;
 
-        let action_btn = Button::new(name).fill(Color32::from_black_alpha(0));
-        let activated = self.ui.add(action_btn).clicked() || (focused && self.list_state.activate);
         RowUiAction { activated }
     }
     pub fn secondary_action(&mut self, name: &str) -> RowUiAction {
         let focused = self.focused && self.list_state.col == self.col_i;
-        let color = match focused {
+        let bg = match focused {
             true => Color32::from_white_alpha(16),
             false => Color32::from_white_alpha(8),
         };
+        let fg = match focused {
+            true => Color32::from_gray(255),
+            false => Color32::from_gray(200),
+        };
         self.col_i += 1;
 
-        let action_btn = Button::new(name).fill(color);
-        let activated = self.ui.add(action_btn).clicked() || (focused && self.list_state.activate);
+        let activated = self
+            .ui
+            .scope(|ui| {
+                ui.visuals_mut().override_text_color = Some(fg);
+                let action_btn = Button::new(name).fill(bg);
+                let activated =
+                    ui.add(action_btn).clicked() || (focused && self.list_state.activate);
+
+                activated
+            })
+            .inner;
         RowUiAction { activated }
     }
 }
