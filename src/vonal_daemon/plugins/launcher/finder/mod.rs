@@ -27,14 +27,12 @@ pub struct Finder {
     cache: Vec<AppIndex>,
 }
 
-const MAXIMUM_NUMBER_OF_RESULTS: usize = 10;
-
 impl Finder {
     pub fn new(indices: Vec<AppIndex>) -> Self {
         Self { cache: indices }
     }
 
-    pub fn find(&self, query: &str) -> Vec<AppMatch<'_>> {
+    pub fn find(&self, query: &str, number_of_results: usize) -> Vec<AppMatch<'_>> {
         let mut results: Vec<_> = self
             .cache
             .iter()
@@ -66,8 +64,8 @@ impl Finder {
             })
             .collect();
 
-        limited_selection_sort::sort(&mut results, MAXIMUM_NUMBER_OF_RESULTS);
-        results.truncate(MAXIMUM_NUMBER_OF_RESULTS);
+        limited_selection_sort::sort(&mut results, number_of_results);
+        results.truncate(number_of_results);
         results
     }
 }

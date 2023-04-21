@@ -21,6 +21,7 @@ pub struct Launcher {
     list: ListState,
     config_prefix: String,
     config_index_path: bool,
+    config_number_of_results: usize,
 }
 
 impl Launcher {
@@ -53,7 +54,7 @@ impl Launcher {
 
     fn find_apps(&self, query: &str) -> Vec<AppIndex> {
         self.finder
-            .find(query)
+            .find(query, self.config_number_of_results)
             .into_iter()
             .map(|app_match| app_match.index)
             .cloned()
@@ -147,6 +148,7 @@ impl Plugin for Launcher {
         builder.group("launcher_plugin", |builder| {
             self.config_prefix = builder.get_or_create("prefix", "".to_string())?;
             self.config_index_path = builder.get_or_create("index_path", true)?;
+            self.config_number_of_results = builder.get_or_create("number_of_results", 7)?;
             self.reindex_apps();
             Ok(())
         })?;
