@@ -63,7 +63,6 @@ pub trait Plugin {
 #[derive(Default)]
 pub struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
-    config_padding: f32,
     config_plugins: Vec<String>,
 }
 
@@ -73,7 +72,6 @@ impl PluginManager {
     }
 
     pub fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
-        self.config_padding = builder.get_or_create("padding", 15.)?;
         let plugins = builder.get_or_create(
             "plugins",
             vec![
@@ -114,7 +112,7 @@ impl PluginManager {
 
     pub fn search(&mut self, query: &mut String, ui: &mut Ui, gl_window: &GlutinWindowContext) {
         ui.horizontal_top(|ui| {
-            ui.add_space(self.config_padding);
+            ui.add_space(15.);
             ui.vertical(|ui| {
                 // don't search when there's nothing to search
                 if query.is_empty() {
@@ -127,6 +125,8 @@ impl PluginManager {
                         return;
                     }
                 }
+
+                ui.add_space(10.);
             });
         });
     }
