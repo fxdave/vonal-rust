@@ -114,6 +114,7 @@ impl Plugin for Launcher {
                         self.run(&app.exec, &args);
                         query.clear();
                         gl_window.window().set_visible(false);
+                        self.list = Default::default();
                     }
 
                     for action in &app.actions {
@@ -121,6 +122,7 @@ impl Plugin for Launcher {
                             self.run(&action.command, &args);
                             query.clear();
                             gl_window.window().set_visible(false);
+                            self.list = Default::default();
                         }
                     }
                 })

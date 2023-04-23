@@ -14,7 +14,7 @@ use super::{Plugin, PluginFlowControl};
 
 #[derive(Default)]
 pub struct Pass {
-    list_state: ListState,
+    list: ListState,
     config_command_list_passwords: String,
     config_command_copy_password: String,
     config_command_type_password: String,
@@ -84,6 +84,7 @@ impl Pass {
                 ui.label(&e.to_string())
             } else {
                 *query = "".into();
+                self.list = Default::default();
             }
         }
     }
@@ -102,6 +103,7 @@ impl Pass {
                 ui.label(&e.to_string())
             } else {
                 *query = "".into();
+                self.list = Default::default();
             }
         }
     }
@@ -133,8 +135,8 @@ impl Plugin for Pass {
         match self.list_passwords() {
             Ok(passwords) => {
                 const NUMBER_OF_BUTTONS: usize = 2;
-                self.list_state.update(ui.ctx(), passwords.len(), |_| NUMBER_OF_BUTTONS);
-                ui.list(self.list_state, |mut ui| {
+                self.list.update(ui.ctx(), passwords.len(), |_| NUMBER_OF_BUTTONS);
+                ui.list(self.list, |mut ui| {
                     for pw in passwords {
                         ui.row(|mut ui| {
                             ui.label(&pw);
