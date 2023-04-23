@@ -18,7 +18,7 @@ pub struct AppConfig {
 
 pub struct App {
     pub config: AppConfig,
-    query: String,
+    pub query: String,
     prompt_icon: RetainedImage,
     plugin_manager: PluginManager,
     error: Option<String>,
@@ -135,16 +135,15 @@ impl App {
     }
 
     fn render_search_bar(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, disable_cursor: bool) {
-        ui.add(
-            TextEdit::singleline(&mut self.query)
-                .interactive(!disable_cursor)
-                .id(Id::new(SEARCH_INPUT_ID))
-                .frame(false)
-                .hint_text(&self.config.placeholder)
-                .font(FontSelection::FontId(FontId::proportional(20.)))
-                .margin(vec2(0., 15.))
-                .desired_width(f32::INFINITY),
-        );
+        let textbox = TextEdit::singleline(&mut self.query)
+            .interactive(!disable_cursor)
+            .id(Id::new(SEARCH_INPUT_ID))
+            .frame(false)
+            .hint_text(&self.config.placeholder)
+            .font(FontSelection::FontId(FontId::proportional(20.)))
+            .margin(vec2(0., 15.))
+            .desired_width(f32::INFINITY);
+        ui.add(textbox);
         ui.memory().request_focus(Id::new(SEARCH_INPUT_ID));
     }
 

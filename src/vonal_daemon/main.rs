@@ -146,15 +146,7 @@ fn handle_platform_event(
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             gl_window.window().request_redraw();
         }
-        Event::UserEvent(UserEvent::CliCommand(command)) => match command.as_str() {
-            "show" => show_window(&gl_window, true),
-            "hide" => hide_window(&gl_window),
-            "toggle" => {
-                let show = !gl_window.window().is_visible().unwrap_or(false);
-                show_window(&gl_window, show);
-            }
-            command => println!("Got command: {command:?}"),
-        },
+        Event::UserEvent(UserEvent::CliCommand(commands)) => parse_cli(commands, gl_window, app),
         Event::UserEvent(UserEvent::Quit) => control_flow.set_exit(),
         Event::UserEvent(UserEvent::ConfigEvent(event)) => match event {
             ConfigEvent::Created => println!("Config file created"),
@@ -184,6 +176,27 @@ fn handle_platform_event(
             ConfigEvent::None => (),
         },
         _ => {}
+    }
+}
+
+fn parse_cli(commands: String, gl_window: &GlutinWindowContext, app: &mut app::App) {
+    let mut commands = commands.split(',');
+
+    while let Some(command) = commands.next() {
+        match command {
+            "show" => show_window(&gl_window, true),
+            "hide" => hide_window(&gl_window),
+            "toggle" => {
+                let show = !gl_window.window().is_visible().unwrap_or(false);
+                show_window(&gl_window, show);
+            }
+            "set_query" => {
+                let query = commands.next().unwrap_or_default();
+                app.query = query.into();
+                gl_window.window().request_redraw();
+            }
+            command => println!("Got command: {command:?}"),
+        }
     }
 }
 
