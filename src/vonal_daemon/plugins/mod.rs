@@ -9,6 +9,8 @@ use crate::{
 mod launcher;
 #[cfg(feature = "math_plugin")]
 mod math;
+#[cfg(feature = "pass_plugin")]
+mod pass;
 
 pub enum PluginFlowControl {
     /// check other plugins as well
@@ -79,6 +81,8 @@ impl PluginManager {
                 "math_plugin".to_string(),
                 #[cfg(feature = "launcher_plugin")]
                 "launcher_plugin".to_string(),
+                #[cfg(feature = "pass_plugin")]
+                "pass_plugin".to_string(),
             ],
         )?;
 
@@ -89,6 +93,8 @@ impl PluginManager {
                 match plugin.as_str() {
                     #[cfg(feature = "math_plugin")]
                     "math_plugin" => self.plugins.push(Box::new(math::Math::new())),
+                    #[cfg(feature = "pass_plugin")]
+                    "pass_plugin" => self.plugins.push(Box::new(pass::Pass::new())),
                     #[cfg(feature = "launcher_plugin")]
                     "launcher_plugin" => self.plugins.push(Box::new(launcher::Launcher::new())),
                     plugin_name => return Err(ConfigError::BadEntryError {

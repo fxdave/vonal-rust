@@ -12,9 +12,10 @@ name = "vonalc"
 path = "src/vonal_client/main.rs"
 
 [features]
-default = ["launcher_plugin", "math_plugin"]
+default = ["launcher_plugin", "math_plugin", "pass_plugin"]
 launcher_plugin = ["freedesktop-desktop-entry", "regex"]
 math_plugin = []
+pass_plugin = []
 
 [dependencies]
 egui = "0.20.1"
