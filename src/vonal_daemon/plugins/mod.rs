@@ -128,7 +128,7 @@ impl PluginManager {
                 for i in &mut self.plugins {
                     let flow_control = i.search(query, ui, gl_window);
                     if let PluginFlowControl::Break = flow_control {
-                        return;
+                        break;
                     }
                 }
 
