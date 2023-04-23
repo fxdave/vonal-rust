@@ -119,8 +119,10 @@ password_files=( "${password_files[@]%.gpg}" )
 printf '%s\n' "${password_files[@]}"
 "#;
 const DEFAULT_COPY_PASSWORD_COMMAND: &str = r#"pass show -c {name}"#;
-const DEFAULT_TYPE_PASSWORD_COMMAND: &str =
-    r#"pass show {name} | { IFS= read -r pass; printf %s "$pass"; } | xdotool"#;
+const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show {name} \
+| { IFS= read -r pass; printf %s "$pass"; } \
+| xdotool type --clearmodifiers --file -
+"#;
 
 impl Plugin for Pass {
     fn search(
@@ -166,7 +168,7 @@ impl Plugin for Pass {
             )?;
             self.config_command_type_password = builder.get_or_create(
                 "command_type_password",
-                DEFAULT_TYPE_PASSWORD_COMMAND.into(),
+                DEFAULT_TYPE_PASSWORD_COMMAND.trim_start().into(),
             )?;
             Ok(())
         })?;
