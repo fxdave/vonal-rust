@@ -14,7 +14,7 @@ pub fn create_display<TUserEvent>(
         .with_visible(false)
         .with_decorations(false)
         .with_resizable(false)
-        .with_always_on_top(true)
+        .with_window_level(winit::window::WindowLevel::AlwaysOnTop)
         .with_inner_size(PhysicalSize {
             width: 10,
             height: 10,
@@ -57,7 +57,7 @@ impl GlutinWindowContext {
 
         #[cfg(target_os = "linux")]
         let preference = glutin::display::DisplayApiPreference::EglThenGlx(Box::new(
-            winit::platform::unix::register_xlib_error_hook,
+            winit::platform::x11::register_xlib_error_hook,
         ));
 
         let gl_display = glutin::display::Display::new(raw_display_handle, preference).unwrap();

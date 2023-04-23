@@ -144,7 +144,9 @@ impl App {
             .margin(vec2(0., 15.))
             .desired_width(f32::INFINITY);
         ui.add(textbox);
-        ui.memory().request_focus(Id::new(SEARCH_INPUT_ID));
+        ui.memory_mut(|memory| {
+            memory.request_focus(Id::new(SEARCH_INPUT_ID));
+        })
     }
 
     fn render_mode_indicator_icon(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -164,7 +166,7 @@ impl App {
     }
 
     fn handle_escape(&mut self, ctx: &egui::Context, window: &GlutinWindowContext) {
-        if ctx.input().key_pressed(egui::Key::Escape) {
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             if self.query.is_empty() {
                 window.window().set_visible(false);
             }

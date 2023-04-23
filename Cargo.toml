@@ -18,13 +18,13 @@ math_plugin = []
 pass_plugin = []
 
 [dependencies]
-egui = "0.20.1"
-egui_extras = { version = "0.20.0", features = ["svg"] }
+egui = "0.21.0"
+egui_extras = { version = "0.21.0", features = ["svg"] }
 poll-promise = "0.2.0"
-egui_glow = { version = "0.20.1", features = ["clipboard", "winit"] }
+egui_glow = { version = "0.21.0", features = ["clipboard", "winit"] }
 glutin = { version = "0.30.3", features = ["x11"] }
-glutin-winit = { version = "0.2.1", features = ["x11"] }
-winit = { version = "0.27.5", features = ["x11"] }
+glutin-winit = { version = "0.3.0", features = ["x11"] }
+winit = { version = "0.28.3", features = ["x11"] }
 
 # configuration
 toml = "0.7.2"

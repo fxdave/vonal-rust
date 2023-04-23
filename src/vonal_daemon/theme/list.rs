@@ -27,12 +27,13 @@ impl ListState {
     }
 
     pub fn before_search(&mut self, ctx: &Context) -> ListPreparation {
-        let input = ctx.input();
-        let disable_cursor = input.key_pressed(egui::Key::ArrowUp)
-            || input.key_pressed(egui::Key::ArrowDown)
-            || (self.row != -1
-                && (input.key_pressed(egui::Key::ArrowLeft)
-                    || input.key_pressed(egui::Key::ArrowRight)));
+        let disable_cursor = ctx.input(|i| {
+            i.key_pressed(egui::Key::ArrowUp)
+                || i.key_pressed(egui::Key::ArrowDown)
+                || (self.row != -1
+                    && (i.key_pressed(egui::Key::ArrowLeft)
+                        || i.key_pressed(egui::Key::ArrowRight)))
+        });
 
         ListPreparation { disable_cursor }
     }
@@ -53,21 +54,20 @@ impl ListState {
     ) {
         // prepare inputs
         let rows_length = rows_length as i32;
-        let input = ctx.input();
 
         // change row
-        if input.key_pressed(egui::Key::ArrowUp) {
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
             self.row -= 1;
         }
-        if input.key_pressed(egui::Key::ArrowDown) {
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
             self.row += 1;
         }
 
         // change col
-        if input.key_pressed(egui::Key::ArrowLeft) {
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
             self.col -= 1;
         }
-        if input.key_pressed(egui::Key::ArrowRight) {
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
             self.col += 1;
         }
 
@@ -89,7 +89,7 @@ impl ListState {
         }
 
         // set activate key pressed state
-        self.activate = ctx.input().key_pressed(egui::Key::Enter)
+        self.activate = ctx.input(|i| i.key_pressed(egui::Key::Enter))
     }
 }
 
