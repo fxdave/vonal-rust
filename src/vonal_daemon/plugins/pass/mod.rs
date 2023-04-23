@@ -26,7 +26,7 @@ impl Pass {
         Default::default()
     }
 
-    fn list_passwords(&self) -> Result<Vec<String>, Box<dyn Error>> {
+    fn list_passwords(&self, keyword: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let call = Command::new("bash")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -41,7 +41,11 @@ impl Pass {
         }
 
         let stdout = String::from_utf8_lossy(&call.stdout);
-        let passwords = stdout.lines().map(ToString::to_string).collect();
+        let passwords = stdout
+            .lines()
+            .filter(|name| name.contains(keyword))
+            .map(ToString::to_string)
+            .collect();
         Ok(passwords)
     }
 
@@ -131,13 +135,19 @@ impl Plugin for Pass {
         ui: &mut egui::Ui,
         gl_window: &crate::windowing::GlutinWindowContext,
     ) -> PluginFlowControl {
-        if !query.starts_with("pass_plugin") {
+        if !query.starts_with(&self.config_prefix) {
             return PluginFlowControl::Continue;
         }
-        match self.list_passwords() {
+
+        let keyword = query
+            .strip_prefix(&self.config_prefix)
+            .unwrap_or_default()
+            .trim();
+        match self.list_passwords(keyword) {
             Ok(passwords) => {
                 const NUMBER_OF_BUTTONS: usize = 2;
-                self.list.update(ui.ctx(), passwords.len(), |_| NUMBER_OF_BUTTONS);
+                self.list
+                    .update(ui.ctx(), passwords.len(), |_| NUMBER_OF_BUTTONS);
                 ui.list(self.list, |mut ui| {
                     for pw in passwords {
                         ui.row(|mut ui| {
