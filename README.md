@@ -36,8 +36,10 @@ Currently, there are 3 plugins:
     - `= sin(radians(90))` prints `1.0`
     - `= [i for i in range(1000) if i %99 == 0]` shows the numbers between 0 and 999 that are dividable by 99
 - **Password manager (pass_plugin):** A configurable password manager plugin. It works with every password managers, however, the default config is only for GNU pass. This is not meant to be used from the search menu although you can reach it that way as well.
-  - suggested binding: `super+p` `vonalc set_query pass_plugin show`
-  - trigger: `pass_plugin`
+  - suggested binding: `super+p` `vonalc set_query "pass " show`
+  - trigger: `pass`
+  - example commands:
+    - `pass fa` list every account name containing "fa"
 
 Warning: On update you have to manually enable new plugins.
 

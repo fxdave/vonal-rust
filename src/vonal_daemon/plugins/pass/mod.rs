@@ -113,7 +113,7 @@ impl Pass {
     }
 }
 
-const DEFAULT_PREFIX: &str = "pass_plugin";
+const DEFAULT_PREFIX: &str = "pass";
 const DEFAULT_LIST_PASSWORDS_COMMAND: &str = r#"
 shopt -s nullglob globstar
 prefix=${PASSWORD_STORE_DIR-~/.password-store}
