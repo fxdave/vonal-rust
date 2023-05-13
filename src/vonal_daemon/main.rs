@@ -1,7 +1,10 @@
 use std::error::Error;
-use std::{fs, io::Read, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
+use std::io::{BufRead, BufReader};
+use std::{fs, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
 use std::{os::unix::net::UnixStream, thread};
 
+use crate::config::ConfigError;
+use common::{Command, Commands};
 use config::watcher::ConfigEvent;
 use config::ConfigBuilder;
 use derive_more::{Display, Error};
@@ -9,8 +12,6 @@ use windowing::GlutinWindowContext;
 use winit::event::{Event, StartCause, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::platform::run_return::EventLoopExtRunReturn;
-
-use crate::config::ConfigError;
 
 mod app;
 #[path = "../common.rs"]
@@ -71,10 +72,18 @@ fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
 
     // Iterate over clients, blocks if no client available
     for client in stream.incoming() {
-        let mut stream = client?;
-        let mut buf = String::new();
-        stream.read_to_string(&mut buf)?;
-        tx.send(UserEvent::CliCommand(buf))?;
+        let stream = client?;
+        let mut reader = BufReader::new(stream);
+        if let Err(error) = reader.fill_buf() {
+            println!("{:?}", error);
+        }
+        let result = bincode::deserialize(reader.buffer());
+        match result {
+            Ok(commands) => tx.send(UserEvent::CliCommands(commands))?,
+            Err(error) => {
+                println!("{error:?}")
+            }
+        }
     }
 
     Ok(())
@@ -145,8 +154,8 @@ fn handle_platform_event(
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             gl_window.window().request_redraw();
         }
-        Event::UserEvent(UserEvent::CliCommand(commands)) => {
-            parse_cli(commands, gl_window, app);
+        Event::UserEvent(UserEvent::CliCommands(commands)) => {
+            parse_cli(commands.0, gl_window, app);
         }
         Event::UserEvent(UserEvent::Quit) => control_flow.set_exit(),
         Event::UserEvent(UserEvent::ConfigEvent(event)) => match event {
@@ -180,28 +189,20 @@ fn handle_platform_event(
     }
 }
 
-fn parse_cli(
-    commands: String,
-    gl_window: &GlutinWindowContext,
-    app: &mut app::App
-) {
-    let mut commands = commands.split(',');
-
-    while let Some(command) = commands.next() {
+fn parse_cli(commands: Vec<Command>, gl_window: &GlutinWindowContext, app: &mut app::App) {
+    for command in &commands {
         match command {
-            "show" => show_window(&gl_window, true),
-            "hide" => hide_window(&gl_window),
-            "toggle" => {
+            Command::Show => show_window(&gl_window, true),
+            Command::Hide => hide_window(&gl_window),
+            Command::Toggle => {
                 let show = !gl_window.window().is_visible().unwrap_or(false);
                 show_window(&gl_window, show);
             }
-            "set_query" => {
-                let query = commands.next().unwrap_or_default();
+            Command::SetQuery { query } => {
                 app.query = query.into();
                 app.reset_search_input_cursor = true;
                 gl_window.window().request_redraw();
             }
-            command => println!("Got command: {command:?}"),
         }
     }
 }
@@ -260,6 +261,6 @@ fn start_config_watcher(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Erro
 #[derive(Debug)]
 enum UserEvent {
     Quit,
-    CliCommand(String),
+    CliCommands(Commands),
     ConfigEvent(ConfigEvent),
 }
