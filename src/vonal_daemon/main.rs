@@ -6,7 +6,7 @@ use config::watcher::ConfigEvent;
 use config::ConfigBuilder;
 use derive_more::{Display, Error};
 use windowing::GlutinWindowContext;
-use winit::event::{Event, StartCause};
+use winit::event::{Event, StartCause, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::platform::run_return::EventLoopExtRunReturn;
 
@@ -117,7 +117,6 @@ fn handle_platform_event(
             *control_flow = redraw(app, egui_glow, &gl_window);
         }
         Event::WindowEvent { event, .. } => {
-            use winit::event::WindowEvent;
             match event {
                 WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                     gl_window.window().set_visible(false);
@@ -146,7 +145,9 @@ fn handle_platform_event(
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
             gl_window.window().request_redraw();
         }
-        Event::UserEvent(UserEvent::CliCommand(commands)) => parse_cli(commands, gl_window, app),
+        Event::UserEvent(UserEvent::CliCommand(commands)) => {
+            parse_cli(commands, gl_window, app);
+        }
         Event::UserEvent(UserEvent::Quit) => control_flow.set_exit(),
         Event::UserEvent(UserEvent::ConfigEvent(event)) => match event {
             ConfigEvent::Created => println!("Config file created"),
@@ -179,7 +180,11 @@ fn handle_platform_event(
     }
 }
 
-fn parse_cli(commands: String, gl_window: &GlutinWindowContext, app: &mut app::App) {
+fn parse_cli(
+    commands: String,
+    gl_window: &GlutinWindowContext,
+    app: &mut app::App
+) {
     let mut commands = commands.split(',');
 
     while let Some(command) = commands.next() {
@@ -193,6 +198,7 @@ fn parse_cli(commands: String, gl_window: &GlutinWindowContext, app: &mut app::A
             "set_query" => {
                 let query = commands.next().unwrap_or_default();
                 app.query = query.into();
+                app.reset_search_input_cursor = true;
                 gl_window.window().request_redraw();
             }
             command => println!("Got command: {command:?}"),

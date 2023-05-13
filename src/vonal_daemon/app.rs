@@ -1,4 +1,8 @@
-use egui::{vec2, Color32, FontId, FontSelection, Id, Image, RichText, TextEdit};
+use egui::{
+    text::CCursor,
+    text_edit::{CCursorRange, TextEditOutput},
+    vec2, Color32, FontId, FontSelection, Id, Image, RichText, TextEdit,
+};
 use egui_extras::RetainedImage;
 use winit::dpi::PhysicalSize;
 
@@ -19,6 +23,7 @@ pub struct AppConfig {
 pub struct App {
     pub config: AppConfig,
     pub query: String,
+    pub reset_search_input_cursor: bool,
     prompt_icon: RetainedImage,
     plugin_manager: PluginManager,
     error: Option<String>,
@@ -28,7 +33,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             config: AppConfig::default(),
-            query: String::new(),
+            query: Default::default(),
             prompt_icon: egui_extras::RetainedImage::from_svg_bytes(
                 "./assets/right.svg",
                 include_bytes!("./assets/right.svg"),
@@ -36,6 +41,7 @@ impl App {
             .unwrap(),
             plugin_manager: PluginManager::new(),
             error: None,
+            reset_search_input_cursor: false,
         }
     }
 }
@@ -135,15 +141,30 @@ impl App {
     }
 
     fn render_search_bar(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, disable_cursor: bool) {
-        let textbox = TextEdit::singleline(&mut self.query)
+        let TextEditOutput {
+            mut state,
+            response,
+            ..
+        } = TextEdit::singleline(&mut self.query)
             .interactive(!disable_cursor)
             .id(Id::new(SEARCH_INPUT_ID))
             .frame(false)
             .hint_text(&self.config.placeholder)
             .font(FontSelection::FontId(FontId::proportional(20.)))
             .margin(vec2(0., 15.))
-            .desired_width(f32::INFINITY);
-        ui.add(textbox);
+            .desired_width(f32::INFINITY)
+            .show(ui);
+
+        if self.reset_search_input_cursor {
+            // Create a new selection range
+            let min = CCursor::new(self.query.len());
+            let max = CCursor::new(self.query.len());
+            let new_range = CCursorRange::two(min, max);
+            state.set_ccursor_range(Some(new_range));
+            state.store(ui.ctx(), response.id);
+            self.reset_search_input_cursor = false;
+        }
+
         ui.memory_mut(|memory| {
             memory.request_focus(Id::new(SEARCH_INPUT_ID));
         })
