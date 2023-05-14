@@ -214,3 +214,69 @@ impl ToConfig for Value {
         self
     }
 }
+
+#[derive(Debug)]
+pub enum Dimension {
+    Percentage(f64),
+    Point(f64),
+}
+
+impl Dimension {
+    pub fn get_points(&self, max: f64) -> f64 {
+        match self {
+            Dimension::Percentage(p) => p * max,
+            Dimension::Point(p) => *p,
+        }
+    }
+}
+
+impl Default for Dimension {
+    fn default() -> Self {
+        Self::Point(0.)
+    }
+}
+
+impl FromConfig for Dimension {
+    fn from_config(raw: &Value) -> Option<Self> {
+        if let Some(value) = raw.as_str() {
+            if value.contains('%') {
+                let number: f64 = value.strip_suffix('%')?.parse().ok()?;
+                return Some(Dimension::Percentage(number / 100.));
+            }
+
+            let number: f64 = value.parse().ok()?;
+            return Some(Dimension::Point(number));
+        } else {
+            Some(Dimension::Point(raw.as_float()?))
+        }
+    }
+}
+
+impl ToConfig for Dimension {
+    fn to_config(self) -> Value {
+        match self {
+            Dimension::Percentage(p) => Value::String(format!("{}%", p * 100.)),
+            Dimension::Point(p) => Value::Float(p as f64),
+        }
+    }
+}
+
+impl<T: FromConfig> FromConfig for Option<T> {
+    fn from_config(raw: &Value) -> Option<Self> {
+        let is_none = raw.as_str().map(|value| value == "auto").unwrap_or(false);
+        if is_none {
+            Some(None)
+        } else {
+            Some(Some(T::from_config(raw)?))
+        }
+    }
+}
+
+impl<T: ToConfig> ToConfig for Option<T> {
+    fn to_config(self) -> Value {
+        match self {
+            Some(t) => t.to_config(),
+            None => Value::String("auto".into()),
+        }
+    }
+}
