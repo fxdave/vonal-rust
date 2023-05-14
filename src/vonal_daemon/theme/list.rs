@@ -21,8 +21,7 @@ impl ListState {
     pub fn new(row: i32) -> Self {
         Self {
             row,
-            col: 0,
-            activate: false,
+            ..Default::default()
         }
     }
 
@@ -168,33 +167,60 @@ pub struct ListUi<'u> {
     ui: &'u mut Ui,
     list_state: ListState,
     row_i: i32,
+    length: Option<i32>,
 }
 
 impl<'u> ListUi<'u> {
-    pub fn new(ui: &'u mut Ui, list_state: ListState) -> Self {
+    pub fn new(ui: &'u mut Ui, list_state: ListState, length: Option<i32>) -> Self {
         Self {
             row_i: 0,
             list_state,
             ui,
+            length,
         }
     }
 
     pub fn row(&mut self, callback: impl FnOnce(RowUi)) {
+        if let Some(max_len) = self.length {
+            let current_row: i32 = self.list_state.row + 1;
+            let min: i32 = (current_row - max_len).max(0);
+            let max = min + max_len;
+            let current_row_visible = self.row_i > min && self.row_i <= max;
+            if !current_row_visible {
+                self.row_i += 1;
+                return;
+            }
+        }
+
         let focused = self.list_state.row == self.row_i;
-        self.row_i += 1;
         self.ui.horizontal(|ui| {
             let row_ui = RowUi::new(ui, self.list_state, focused);
             callback(row_ui);
         });
+        self.row_i += 1;
     }
 }
 
 pub trait CreateList {
     fn list<'u>(&'u mut self, list_state: ListState, callback: impl FnOnce(ListUi<'u>));
+    fn list_limited<'u>(
+        &'u mut self,
+        length: usize,
+        list_state: ListState,
+        callback: impl FnOnce(ListUi<'u>),
+    );
 }
 
 impl CreateList for Ui {
     fn list<'u>(&'u mut self, list_state: ListState, callback: impl FnOnce(ListUi<'u>)) {
-        callback(ListUi::new(self, list_state));
+        callback(ListUi::new(self, list_state, None));
+    }
+    fn list_limited<'u>(
+        &'u mut self,
+        length: usize,
+        list_state: ListState,
+        callback: impl FnOnce(ListUi<'u>),
+    ) {
+        callback(ListUi::new(self, list_state, Some(length as i32)));
     }
 }
