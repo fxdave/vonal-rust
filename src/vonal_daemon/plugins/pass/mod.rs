@@ -1,13 +1,12 @@
+use crate::{
+    config::{ConfigBuilder, ConfigError},
+    theme::list::{CreateList, ListState},
+};
 use std::{
     error::Error,
     fmt::Display,
     io::{BufRead, BufReader},
     process::{Command, Stdio},
-};
-
-use crate::{
-    config::{ConfigBuilder, ConfigError},
-    theme::list::{CreateList, ListState},
 };
 
 use super::{Plugin, PluginFlowControl};
@@ -82,11 +81,11 @@ impl Pass {
         pw: &String,
         query: &mut String,
     ) {
-        if ui.secondary_action("Copy").activated {
+        if ui.primary_action("Copy").activated {
             gl_window.window.set_visible(false);
             if let Err(e) = self.copy_password(pw) {
                 gl_window.window.set_visible(true);
-                ui.label(&e.to_string())
+                ui.label(&e.to_string());
             } else {
                 *query = "".into();
                 self.list = Default::default();
@@ -96,16 +95,16 @@ impl Pass {
 
     fn render_type_button(
         &mut self,
-        mut ui: crate::theme::list::RowUi,
+        ui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
-        pw: String,
+        pw: &str,
         query: &mut String,
     ) {
-        if ui.secondary_action("Type").activated {
+        if ui.primary_action("Type").activated {
             gl_window.window.set_visible(false);
             if let Err(e) = self.type_password(&pw) {
                 gl_window.window.set_visible(true);
-                ui.label(&e.to_string())
+                ui.label(&e.to_string());
             } else {
                 *query = "".into();
                 self.list = Default::default();
@@ -152,10 +151,11 @@ impl Plugin for Pass {
                     .update(ui.ctx(), passwords.len(), |_| NUMBER_OF_BUTTONS);
                 ui.list_limited(self.config_list_length, self.list, |mut ui| {
                     for pw in passwords {
-                        ui.row(|mut ui| {
-                            ui.label(&pw);
-                            self.render_copy_button(&mut ui, gl_window, &pw, query);
-                            self.render_type_button(ui, gl_window, pw, query);
+                        ui.row(|mut rui| {
+                            rui.label(&pw);
+                            self.render_type_button(&mut rui, gl_window, &pw, query);
+                            rui.label("/");
+                            self.render_copy_button(&mut rui, gl_window, &pw, query);
                         })
                     }
                 });
