@@ -19,6 +19,7 @@ pub struct Pass {
     config_command_copy_password: String,
     config_command_type_password: String,
     config_prefix: String,
+    config_list_length: usize,
 }
 
 impl Pass {
@@ -114,6 +115,7 @@ impl Pass {
 }
 
 const DEFAULT_PREFIX: &str = "pass";
+const DEFAULT_LIST_LENGTH: usize = 10;
 const DEFAULT_LIST_PASSWORDS_COMMAND: &str = r#"
 shopt -s nullglob globstar
 prefix=${PASSWORD_STORE_DIR-~/.password-store}
@@ -148,7 +150,7 @@ impl Plugin for Pass {
                 const NUMBER_OF_BUTTONS: usize = 2;
                 self.list
                     .update(ui.ctx(), passwords.len(), |_| NUMBER_OF_BUTTONS);
-                ui.list(self.list, |mut ui| {
+                ui.list_limited(self.config_list_length, self.list, |mut ui| {
                     for pw in passwords {
                         ui.row(|mut ui| {
                             ui.label(&pw);
@@ -168,6 +170,8 @@ impl Plugin for Pass {
     fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
         builder.group("pass_plugin", |builder| {
             self.config_prefix = builder.get_or_create("prefix", DEFAULT_PREFIX.into())?;
+            self.config_list_length =
+                builder.get_or_create("config_list_length", DEFAULT_LIST_LENGTH)?;
             self.config_command_list_passwords = builder.get_or_create(
                 "command_list_password",
                 DEFAULT_LIST_PASSWORDS_COMMAND.trim_start().into(),
