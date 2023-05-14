@@ -93,7 +93,7 @@ impl ListState {
 }
 
 pub struct RowUi<'u> {
-    ui: &'u mut Ui,
+    pub ui: &'u mut Ui,
     list_state: ListState,
     col_i: i32,
     focused: bool,
