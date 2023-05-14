@@ -182,9 +182,9 @@ impl<'u> ListUi<'u> {
 
     pub fn row(&mut self, callback: impl FnOnce(RowUi)) {
         if let Some(max_len) = self.length {
-            let current_row: i32 = self.list_state.row + 1;
-            let min: i32 = (current_row - max_len).max(0);
-            let max = min + max_len;
+            let current_row: i32 = self.list_state.row;
+            let min: i32 = (current_row - max_len - 1).max(0);
+            let max = min + max_len + 1;
             let current_row_visible = self.row_i > min && self.row_i <= max;
             if !current_row_visible {
                 self.row_i += 1;
