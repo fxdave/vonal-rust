@@ -4,10 +4,10 @@ use egui::{
     vec2, Color32, FontId, FontSelection, Id, Image, RichText, TextEdit,
 };
 use egui_extras::RetainedImage;
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 
 use crate::{
-    config::{ConfigBuilder, ConfigError},
+    config::{ConfigBuilder, ConfigError, Dimension},
     plugins::PluginManager,
     GlutinWindowContext,
 };
@@ -18,6 +18,11 @@ pub struct AppConfig {
     pub scale_factor: f32,
     pub show_mode_indicator: bool,
     pub placeholder: String,
+    pub window_width: Dimension,
+    pub window_height: Dimension,
+    pub auto_set_window_height: bool,
+    pub center_window_horizontally: bool,
+    pub center_window_vertically: bool,
 }
 
 pub struct App {
@@ -86,10 +91,31 @@ impl App {
             // reset window height
             if let Some(monitor) = gl_window.window().current_monitor() {
                 let real_height = ui.cursor().min.y * ctx.pixels_per_point();
-                let size = PhysicalSize {
-                    width: monitor.size().width,
-                    height: real_height as u32,
+                let monitor_height = monitor.size().height;
+                let monitor_width = monitor.size().width;
+
+                let width = self.config.window_width.get_points(monitor_width as f64) as u32;
+                let height = self.config.window_height.get_points(monitor_height as f64) as u32;
+
+                gl_window.window().set_outer_position(PhysicalPosition::new(
+                    if self.config.center_window_horizontally {
+                        monitor_width / 2 - width / 2
+                    } else {
+                        0
+                    },
+                    if self.config.center_window_vertically {
+                        monitor_height / 2 - height / 2
+                    } else {
+                        0
+                    },
+                ));
+
+                let height = if self.config.auto_set_window_height {
+                    real_height as u32
+                } else {
+                    height
                 };
+                let size = PhysicalSize { width, height };
                 gl_window.resize(size);
                 gl_window.window().set_inner_size(size);
                 gl_window.window().set_max_inner_size(Some(size));
@@ -102,12 +128,26 @@ impl App {
     }
 
     pub fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
-        self.config.background =
-            builder.get_or_create("background", Color32::from_rgb(16, 19, 22))?;
-        self.config.scale_factor = builder.get_or_create("scale_factor", 1.0)?;
         self.config.show_mode_indicator = builder.get_or_create("show_mode_indicator", true)?;
         self.config.placeholder =
             builder.get_or_create("placeholder", "Search something ...".to_string())?;
+
+        builder.group("window", |builder| {
+            self.config.background =
+                builder.get_or_create("background", Color32::from_rgb(16, 19, 22))?;
+            self.config.scale_factor = builder.get_or_create("scale_factor", 1.0)?;
+            self.config.window_width =
+                builder.get_or_create("width", Dimension::Percentage(1.0))?;
+            self.config.window_height = builder.get_or_create("height", Dimension::Point(300.0))?;
+            self.config.auto_set_window_height = builder.get_or_create("auto_set_height", true)?;
+            self.config.center_window_horizontally =
+                builder.get_or_create("center_horizontally", false)?;
+            self.config.center_window_vertically =
+                builder.get_or_create("center_vertically", false)?;
+
+            Ok(())
+        })?;
+
         self.plugin_manager.configure(builder)
     }
 
