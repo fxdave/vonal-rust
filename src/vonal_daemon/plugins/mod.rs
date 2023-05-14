@@ -79,10 +79,10 @@ impl PluginManager {
             vec![
                 #[cfg(feature = "math_plugin")]
                 "math_plugin".to_string(),
-                #[cfg(feature = "launcher_plugin")]
-                "launcher_plugin".to_string(),
                 #[cfg(feature = "pass_plugin")]
                 "pass_plugin".to_string(),
+                #[cfg(feature = "launcher_plugin")]
+                "launcher_plugin".to_string(),
             ],
         )?;
 
