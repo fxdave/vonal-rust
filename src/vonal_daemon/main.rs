@@ -228,7 +228,6 @@ fn show_window(gl_window: &GlutinWindowContext, show: bool) {
         .get_focused_monitor()
         .expect("pointer is not on the monitor");
     gl_window.window().set_outer_position(monitor.position());
-    gl_window.window().set_inner_size(monitor.size());
 }
 
 fn redraw(

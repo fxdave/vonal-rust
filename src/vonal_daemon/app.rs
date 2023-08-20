@@ -139,11 +139,10 @@ impl App {
                 self.render_search_screen(ui, ctx, preparation, gl_window);
             }
 
-            if let Some(monitor) = gl_window.window().current_monitor() {
+            if let Some(monitor) = gl_window.get_focused_monitor() {
                 let real_height = ui.cursor().min.y * ctx.pixels_per_point();
                 let monitor_height = monitor.size().height;
                 let monitor_width = monitor.size().width;
-
                 let width = self.config.window_width.get_points(monitor_width as f64) as u32;
                 let height = self.config.window_height.get_points(monitor_height as f64) as u32;
 
