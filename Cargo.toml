@@ -20,13 +20,13 @@ pass_plugin = []
 [dependencies]
 egui = "0.22.0"
 egui_extras = { version = "0.22.0", features = ["svg"] }
-poll-promise = "0.2.0"
+poll-promise = { git = "https://github.com/EmbarkStudios/poll-promise.git" }
 egui_glow = { version = "0.22.0", features = ["clipboard", "winit"] }
 glutin = { version = "0.30.3", features = ["x11"] }
 glutin-winit = { version = "0.3.0", features = ["x11"] }
 winit = { version = "0.28.3", features = ["x11"] }
 serde = "1.0.163"
-bincode="1.0.163"
+bincode = "1.0.163"
 
 # configuration
 toml = "0.7.2"
