@@ -118,10 +118,11 @@ impl App {
 
         // render window
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
-            if let Some(monitor) = gl_window.window().current_monitor() {
+            let focused_monitor = gl_window.get_focused_monitor();
+
+            if let Some(monitor) = focused_monitor.as_ref() {
                 let monitor_height = monitor.size().height;
                 let monitor_width = monitor.size().width;
-
                 let width = self.config.window_width.get_points(monitor_width as f64) as u32;
                 let height = self.config.window_height.get_points(monitor_height as f64) as u32;
                 ui.set_max_size(vec2(
@@ -133,13 +134,14 @@ impl App {
                     height as f32 / ctx.pixels_per_point(),
                 ));
             }
+
             if let Some(error) = self.error.as_ref() {
                 self.render_error_screen(ui, error);
             } else {
                 self.render_search_screen(ui, ctx, preparation, gl_window);
             }
 
-            if let Some(monitor) = gl_window.get_focused_monitor() {
+            if let Some(monitor) = focused_monitor.as_ref() {
                 let real_height = ui.cursor().min.y * ctx.pixels_per_point();
                 let monitor_height = monitor.size().height;
                 let monitor_width = monitor.size().width;
@@ -173,6 +175,8 @@ impl App {
                 gl_window.resize(size);
                 gl_window.window().set_inner_size(size);
                 gl_window.window().set_max_inner_size(Some(size));
+            } else {
+                println!("VONAL: no monitor found")
             }
         });
     }
