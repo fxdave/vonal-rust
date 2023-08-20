@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::io::{BufRead, BufReader};
+use std::sync::Arc;
 use std::{fs, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
 use std::{os::unix::net::UnixStream, thread};
 
@@ -8,6 +9,8 @@ use common::{Command, Commands};
 use config::watcher::ConfigEvent;
 use config::ConfigBuilder;
 use derive_more::{Display, Error};
+use egui_glow::glow::{self};
+use egui_glow::painter::Context;
 use windowing::GlutinWindowContext;
 use winit::event::{Event, StartCause, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
@@ -99,7 +102,7 @@ fn start_gui(mut app: app::App, rx: mpsc::Receiver<UserEvent>) {
     let mut event_loop: EventLoop<UserEvent> = EventLoopBuilder::with_user_event().build();
     let (gl_window, gl) = windowing::create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
-    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl, None);
+    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone(), None);
 
     let proxy = event_loop.create_proxy();
 
@@ -110,7 +113,14 @@ fn start_gui(mut app: app::App, rx: mpsc::Receiver<UserEvent>) {
     });
 
     event_loop.run_return(|event, _, control_flow| {
-        handle_platform_event(event, control_flow, &mut app, &mut egui_glow, &gl_window)
+        handle_platform_event(
+            event,
+            control_flow,
+            &mut app,
+            &mut egui_glow,
+            &gl_window,
+            gl.clone(),
+        )
     });
 }
 
@@ -120,10 +130,11 @@ fn handle_platform_event(
     app: &mut app::App,
     egui_glow: &mut egui_glow::EguiGlow,
     gl_window: &GlutinWindowContext,
+    gl: Arc<Context>,
 ) {
     match event {
         Event::RedrawRequested(_) => {
-            *control_flow = redraw(app, egui_glow, &gl_window);
+            *control_flow = redraw(app, egui_glow, &gl_window, gl);
         }
         Event::WindowEvent { event, .. } => {
             match event {
@@ -224,6 +235,7 @@ fn redraw(
     app: &mut app::App,
     egui_glow: &mut egui_glow::EguiGlow,
     gl_window: &GlutinWindowContext,
+    gl: Arc<Context>,
 ) -> ControlFlow {
     let scale_factor = gl_window.window().scale_factor() as f32 * app.config.scale_factor;
     let repaint_after = egui_glow.run(gl_window.window(), |egui_ctx| {
@@ -239,6 +251,12 @@ fn redraw(
     } else {
         ControlFlow::Wait
     };
+
+    unsafe {
+        use glow::HasContext as _;
+        gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        gl.clear(glow::COLOR_BUFFER_BIT);
+    }
 
     // draw things behind egui here
     egui_glow.paint(gl_window.window());

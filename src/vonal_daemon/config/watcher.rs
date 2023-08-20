@@ -20,10 +20,10 @@ pub enum ConfigEvent {
 
 impl Watcher {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        let mut inotify = Inotify::init().expect("Failed to initialize inotify");
+        let inotify = Inotify::init().expect("Failed to initialize inotify");
         let path = get_config_file_path();
         inotify
-            .add_watch(
+            .watches().add(
                 path,
                 WatchMask::MODIFY | WatchMask::CREATE | WatchMask::DELETE,
             )

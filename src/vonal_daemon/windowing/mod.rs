@@ -19,6 +19,7 @@ pub fn create_display<TUserEvent>(
             width: 10,
             height: 10,
         })
+        .with_transparent(true)
         .with_title("Vonal")
         .build(event_loop)
         .unwrap();
@@ -56,17 +57,14 @@ impl GlutinWindowContext {
         let raw_window_handle = winit_window.raw_window_handle();
 
         #[cfg(target_os = "linux")]
-        let preference = glutin::display::DisplayApiPreference::EglThenGlx(Box::new(
+        let preference = glutin::display::DisplayApiPreference::GlxThenEgl(Box::new(
             winit::platform::x11::register_xlib_error_hook,
         ));
 
         let gl_display = glutin::display::Display::new(raw_display_handle, preference).unwrap();
 
         let config_template = glutin::config::ConfigTemplateBuilder::new()
-            .prefer_hardware_accelerated(None)
-            .with_depth_size(0)
-            .with_stencil_size(0)
-            .with_transparency(false)
+            .with_transparency(true)
             .compatible_with_native_window(raw_window_handle)
             .build();
 

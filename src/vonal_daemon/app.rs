@@ -1,7 +1,8 @@
 use egui::{
+    epaint::Shadow,
     text::CCursor,
     text_edit::{CCursorRange, TextEditOutput},
-    vec2, Color32, FontId, FontSelection, Id, Image, RichText, TextEdit,
+    vec2, Color32, FontId, FontSelection, Id, Image, Margin, RichText, Rounding, Stroke, TextEdit,
 };
 use egui_extras::RetainedImage;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -23,6 +24,12 @@ pub struct AppConfig {
     pub auto_set_window_height: bool,
     pub center_window_horizontally: bool,
     pub center_window_vertically: bool,
+    pub border_color: Color32,
+    pub border_width: f32,
+    pub border_radius: f32,
+    pub shadow_color: Color32,
+    pub shadow_size: f32,
+    pub margin: f32,
 }
 
 pub struct App {
@@ -32,6 +39,7 @@ pub struct App {
     prompt_icon: RetainedImage,
     plugin_manager: PluginManager,
     error: Option<String>,
+    cache_gui_height: f32,
 }
 
 impl App {
@@ -47,6 +55,7 @@ impl App {
             plugin_manager: PluginManager::new(),
             error: None,
             reset_search_input_cursor: false,
+            cache_gui_height: 0.0,
         }
     }
 }
@@ -69,7 +78,36 @@ impl App {
                 Some(_) => Color32::RED,
                 None => self.config.background,
             },
-            ..Default::default()
+            rounding: Rounding {
+                nw: self.config.border_radius,
+                ne: self.config.border_radius,
+                sw: self.config.border_radius,
+                se: self.config.border_radius,
+            },
+            stroke: Stroke {
+                color: self.config.border_color,
+                width: self.config.border_width,
+            },
+            outer_margin: Margin {
+                left: (self.config.border_width / 2.).max(self.config.shadow_size)
+                    + self.config.margin,
+                right: (self.config.border_width / 2.).max(self.config.shadow_size)
+                    + self.config.margin,
+                top: (self.config.border_width / 2.).max(self.config.shadow_size)
+                    + self.config.margin,
+                bottom: (self.config.border_width / 2.).max(self.config.shadow_size)
+                    + self.config.margin,
+            },
+            inner_margin: Margin {
+                left: self.config.border_width / 2.,
+                right: self.config.border_width / 2.,
+                top: self.config.border_width / 2.,
+                bottom: self.config.border_width / 2.,
+            },
+            shadow: Shadow {
+                color: self.config.shadow_color,
+                extrusion: self.config.shadow_size,
+            },
         };
 
         // Empty search bar / exit on escape
@@ -82,43 +120,67 @@ impl App {
 
         // render window
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            if let Some(monitor) = gl_window.window().current_monitor() {
+                let monitor_height = monitor.size().height;
+                let monitor_width = monitor.size().width;
+
+                let width = self.config.window_width.get_points(monitor_width as f64) as u32;
+                let height = self.config.window_height.get_points(monitor_height as f64) as u32;
+                ui.set_max_size(vec2(
+                    width as f32 / ctx.pixels_per_point()
+                        - self.config.border_width.max(self.config.shadow_size)
+                            * ctx.pixels_per_point()
+                            * 4.
+                        - self.config.margin * ctx.pixels_per_point() * 2.0,
+                    height as f32 / ctx.pixels_per_point(),
+                ));
+            }
             if let Some(error) = self.error.as_ref() {
                 self.render_error_screen(ui, error);
             } else {
                 self.render_search_screen(ui, ctx, preparation, gl_window);
             }
 
-            // reset window height
-            if let Some(monitor) = gl_window.window().current_monitor() {
-                let real_height = ui.cursor().min.y * ctx.pixels_per_point();
-                let monitor_height = monitor.size().height;
-                let monitor_width = monitor.size().width;
+            let real_height = ui.cursor().min.y * ctx.pixels_per_point();
+            if (self.cache_gui_height - real_height).abs() > 0.1 {
+                if let Some(monitor) = gl_window.window().current_monitor() {
+                    let real_height = ui.cursor().min.y * ctx.pixels_per_point();
+                    let monitor_height = monitor.size().height;
+                    let monitor_width = monitor.size().width;
 
-                let width = self.config.window_width.get_points(monitor_width as f64) as u32;
-                let height = self.config.window_height.get_points(monitor_height as f64) as u32;
+                    let width = self.config.window_width.get_points(monitor_width as f64) as u32;
+                    let height = self.config.window_height.get_points(monitor_height as f64) as u32;
 
-                gl_window.window().set_outer_position(PhysicalPosition::new(
-                    if self.config.center_window_horizontally {
-                        monitor_width / 2 - width / 2
+                    let old_position = gl_window.window().outer_position().unwrap_or_default();
+                    let new_position = PhysicalPosition::new(
+                        if self.config.center_window_horizontally {
+                            monitor_width / 2 - width / 2
+                        } else {
+                            0
+                        } as i32,
+                        if self.config.center_window_vertically {
+                            monitor_height / 2 - height / 2
+                        } else {
+                            0
+                        } as i32,
+                    );
+                    if old_position != new_position {
+                        gl_window.window().set_outer_position(new_position);
+                    }
+
+                    let height = if self.config.auto_set_window_height {
+                        real_height as u32
                     } else {
-                        0
-                    },
-                    if self.config.center_window_vertically {
-                        monitor_height / 2 - height / 2
-                    } else {
-                        0
-                    },
-                ));
+                        height
+                    } + ((self.config.border_width).max(self.config.shadow_size)
+                        * ctx.pixels_per_point()) as u32;
+                    let size = PhysicalSize { width, height };
+                    gl_window.resize(size);
+                    gl_window.window().set_inner_size(size);
+                    gl_window.window().set_max_inner_size(Some(size));
 
-                let height = if self.config.auto_set_window_height {
-                    real_height as u32
-                } else {
-                    height
-                };
-                let size = PhysicalSize { width, height };
-                gl_window.resize(size);
-                gl_window.window().set_inner_size(size);
-                gl_window.window().set_max_inner_size(Some(size));
+                    self.cache_gui_height = real_height;
+                }
             }
         });
     }
@@ -133,18 +195,40 @@ impl App {
             builder.get_or_create("placeholder", "Search something ...".to_string())?;
 
         builder.group("window", |builder| {
-            self.config.background =
-                builder.get_or_create("background", Color32::from_rgb(16, 19, 22))?;
             self.config.scale_factor = builder.get_or_create("scale_factor", 1.0)?;
-            self.config.window_width =
-                builder.get_or_create("width", Dimension::Percentage(1.0))?;
-            self.config.window_height = builder.get_or_create("height", Dimension::Point(300.0))?;
-            self.config.auto_set_window_height = builder.get_or_create("auto_set_height", true)?;
-            self.config.center_window_horizontally =
-                builder.get_or_create("center_horizontally", false)?;
-            self.config.center_window_vertically =
-                builder.get_or_create("center_vertically", false)?;
 
+            builder.group("geometry", |builder| {
+                self.config.window_width =
+                    builder.get_or_create("width", Dimension::Percentage(1.0))?;
+                self.config.window_height =
+                    builder.get_or_create("height", Dimension::Point(300.0))?;
+                self.config.auto_set_window_height =
+                    builder.get_or_create("auto_set_height", true)?;
+                self.config.center_window_horizontally =
+                    builder.get_or_create("center_horizontally", false)?;
+                self.config.center_window_vertically =
+                    builder.get_or_create("center_vertically", false)?;
+                self.config.margin = builder.get_or_create("margin", 0.)?;
+
+                Ok(())
+            })?;
+
+            builder.group("decoration", |builder| {
+                self.config.background =
+                    builder.get_or_create("background", Color32::from_rgb(6, 9, 12))?;
+
+                // border
+                self.config.border_color =
+                    builder.get_or_create("border_color", Color32::from_gray(60))?;
+                self.config.border_width = builder.get_or_create("border_width", 1.)?;
+                self.config.border_radius = builder.get_or_create("border_radius", 10.)?;
+
+                //shadow
+                self.config.shadow_size = builder.get_or_create("shadow_size", 13.)?;
+                self.config.shadow_color =
+                    builder.get_or_create("shadow_color", Color32::from_black_alpha(100))?;
+                Ok(())
+            })?;
             Ok(())
         })?;
 

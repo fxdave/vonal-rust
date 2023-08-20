@@ -101,12 +101,14 @@ impl FromConfig for Color32 {
         let value = raw.as_str()?;
         let mut split = value
             .trim_start_matches("rgb(")
+            .trim_start_matches("rgba(")
             .trim_end_matches(')')
             .split(',');
         let r: u8 = split.next()?.trim().parse().ok()?;
         let g: u8 = split.next()?.trim().parse().ok()?;
         let b: u8 = split.next()?.trim().parse().ok()?;
-        Some(Color32::from_rgb(r, g, b))
+        let a: u8 = split.next().unwrap_or("255").trim().parse().ok()?;
+        Some(Color32::from_rgba_unmultiplied(r, g, b, a))
     }
 }
 
@@ -115,7 +117,12 @@ impl ToConfig for Color32 {
         let r = self.r();
         let g = self.g();
         let b = self.b();
-        Value::String(format!("rgb({r}, {g}, {b})"))
+        let a = self.a();
+        if a == 255 {
+            Value::String(format!("rgb({r}, {g}, {b})"))
+        } else {
+            Value::String(format!("rgba({r}, {g}, {b}, {a})"))
+        }
     }
 }
 
