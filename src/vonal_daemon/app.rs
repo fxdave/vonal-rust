@@ -39,7 +39,6 @@ pub struct App {
     prompt_icon: RetainedImage,
     plugin_manager: PluginManager,
     error: Option<String>,
-    cache_gui_height: f32,
 }
 
 impl App {
@@ -55,7 +54,6 @@ impl App {
             plugin_manager: PluginManager::new(),
             error: None,
             reset_search_input_cursor: false,
-            cache_gui_height: 0.0,
         }
     }
 }
@@ -141,46 +139,41 @@ impl App {
                 self.render_search_screen(ui, ctx, preparation, gl_window);
             }
 
-            let real_height = ui.cursor().min.y * ctx.pixels_per_point();
-            if (self.cache_gui_height - real_height).abs() > 0.1 {
-                if let Some(monitor) = gl_window.window().current_monitor() {
-                    let real_height = ui.cursor().min.y * ctx.pixels_per_point();
-                    let monitor_height = monitor.size().height;
-                    let monitor_width = monitor.size().width;
+            if let Some(monitor) = gl_window.window().current_monitor() {
+                let real_height = ui.cursor().min.y * ctx.pixels_per_point();
+                let monitor_height = monitor.size().height;
+                let monitor_width = monitor.size().width;
 
-                    let width = self.config.window_width.get_points(monitor_width as f64) as u32;
-                    let height = self.config.window_height.get_points(monitor_height as f64) as u32;
+                let width = self.config.window_width.get_points(monitor_width as f64) as u32;
+                let height = self.config.window_height.get_points(monitor_height as f64) as u32;
 
-                    let old_position = gl_window.window().outer_position().unwrap_or_default();
-                    let new_position = PhysicalPosition::new(
-                        if self.config.center_window_horizontally {
-                            monitor_width / 2 - width / 2
-                        } else {
-                            0
-                        } as i32,
-                        if self.config.center_window_vertically {
-                            monitor_height / 2 - height / 2
-                        } else {
-                            0
-                        } as i32,
-                    );
-                    if old_position != new_position {
-                        gl_window.window().set_outer_position(new_position);
-                    }
-
-                    let height = if self.config.auto_set_window_height {
-                        real_height as u32
+                let old_position = gl_window.window().outer_position().unwrap_or_default();
+                let new_position = PhysicalPosition::new(
+                    if self.config.center_window_horizontally {
+                        monitor_width / 2 - width / 2
                     } else {
-                        height
-                    } + ((self.config.border_width).max(self.config.shadow_size)
-                        * ctx.pixels_per_point()) as u32;
-                    let size = PhysicalSize { width, height };
-                    gl_window.resize(size);
-                    gl_window.window().set_inner_size(size);
-                    gl_window.window().set_max_inner_size(Some(size));
-
-                    self.cache_gui_height = real_height;
+                        0
+                    } as i32,
+                    if self.config.center_window_vertically {
+                        monitor_height / 2 - height / 2
+                    } else {
+                        0
+                    } as i32,
+                );
+                if old_position != new_position {
+                    gl_window.window().set_outer_position(new_position);
                 }
+
+                let height = if self.config.auto_set_window_height {
+                    real_height as u32
+                } else {
+                    height
+                } + ((self.config.border_width).max(self.config.shadow_size)
+                    * ctx.pixels_per_point()) as u32;
+                let size = PhysicalSize { width, height };
+                gl_window.resize(size);
+                gl_window.window().set_inner_size(size);
+                gl_window.window().set_max_inner_size(Some(size));
             }
         });
     }
