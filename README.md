@@ -9,11 +9,25 @@ Currently only X11 is supported. (If you need Wayland support, please tell me.)
 
 ## Installation & Usage
 
-Requirements: Rust.
+### 1. Installation
 
-1. Build: `cargo build --release`
-2. Start the daemon: `./target/release/vonal`
-3. Show the window: `./target/release/vonalc toggle`
+Build from source (Rust is required):
+ - `cargo build --release`
+
+*Alternatively:* Install from binary **on Archlinux**:
+
+- `yay vonal-bin`
+
+*Alternatively:* install from binary **for other distros**:
+
+- Check releases: https://github.com/fxdave/vonal-rust/releases
+
+### 2. Usage
+
+- Start the daemon: `./target/release/vonal`
+- Show the window: `./target/release/vonalc toggle`
+
+<small>(They have to be called from the same directory.)</small>
 
 If you use bspwm, an example rule to keep Vonal floating:
 `bspc rule -a vonal state=floating border=off`
@@ -44,6 +58,7 @@ Currently, there are 3 plugins:
 Warning: On update you have to manually enable new plugins.
 
 ## Vonal Client Commands (vonalc)
+
 Synopsis: `vonalc commandA arg1 arg2 commandB arg1 ...`
 
 - `show`: show the window
@@ -51,8 +66,8 @@ Synopsis: `vonalc commandA arg1 arg2 commandB arg1 ...`
 - `toggle`: show/hide the window
 - `set_query "something"`: writes the word "something" to the searchbar.
 
-
 ## Configuration
+
 The configuration file is created on the fly to `~/.config/vonal/config.toml`.
 You can see every existing config options, there.
 
@@ -67,6 +82,7 @@ I put serious effort to make plugins both unlimited and simple.
 The GUI is done with [egui](https://github.com/emilk/egui), which is tailored for quick progress.
 
 An example plugin:
+
 ```rust
 
 struct SayHiPlugin {}
