@@ -147,20 +147,20 @@ impl App {
                 let monitor_width = monitor.size().width;
                 let width = self.config.window_width.get_points(monitor_width as f64) as u32;
                 let height = self.config.window_height.get_points(monitor_height as f64) as u32;
-
                 let old_position = gl_window.window().outer_position().unwrap_or_default();
                 let new_position = PhysicalPosition::new(
                     if self.config.center_window_horizontally {
-                        monitor_width / 2 - width / 2
+                        monitor.position().x as u32 + monitor_width / 2 - width / 2
                     } else {
-                        0
+                        monitor.position().x as u32
                     } as i32,
                     if self.config.center_window_vertically {
-                        monitor_height / 2 - height / 2
+                        monitor.position().y as u32 + monitor_height / 2 - height / 2
                     } else {
-                        0
+                        monitor.position().y as u32
                     } as i32,
                 );
+
                 if old_position != new_position {
                     gl_window.window().set_outer_position(new_position);
                 }
