@@ -56,10 +56,9 @@ impl GlutinWindowContext {
         let raw_display_handle = winit_window.raw_display_handle();
         let raw_window_handle = winit_window.raw_window_handle();
 
+        // This was GlxThenEgl, but it broke
         #[cfg(target_os = "linux")]
-        let preference = glutin::display::DisplayApiPreference::GlxThenEgl(Box::new(
-            winit::platform::x11::register_xlib_error_hook,
-        ));
+        let preference = glutin::display::DisplayApiPreference::Egl;
 
         let gl_display = glutin::display::Display::new(raw_display_handle, preference).unwrap();
 
