@@ -63,7 +63,6 @@ impl GlutinWindowContext {
         let gl_display = glutin::display::Display::new(raw_display_handle, preference).unwrap();
 
         let config_template = glutin::config::ConfigTemplateBuilder::new()
-            .with_transparency(true)
             .compatible_with_native_window(raw_window_handle)
             .build();
 
