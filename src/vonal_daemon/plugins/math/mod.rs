@@ -1,16 +1,15 @@
-use egui::Color32;
+use egui::{Color32, Ui};
 use poll_promise::Promise;
 use std::{
     process::{Command, Stdio},
     thread,
 };
 
-use super::{Plugin, PluginFlowControl};
+use super::{Plugin, PluginContext};
 use crate::{
     config::{ConfigBuilder, ConfigError},
     theme::list::{CreateList, ListState},
     utils::clipboard::copy_to_clipboard,
-    GlutinWindowContext,
 };
 
 #[derive(Default)]
@@ -43,22 +42,20 @@ impl Math {
 }
 // TODO: async call, move inside textbox
 impl Plugin for Math {
-    fn search(
-        &mut self,
-        query: &mut String,
-        ui: &mut egui::Ui,
-        _: &GlutinWindowContext,
-    ) -> PluginFlowControl {
-        if !query.starts_with(&self.config_prefix) {
-            return PluginFlowControl::Continue;
+    fn search<'a>(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'a>) {
+        if !ctx.query.starts_with(&self.config_prefix) {
+            return;
         }
 
-        if self.previous_query != *query {
+        if self.previous_query != *ctx.query {
             self.promise = None;
         }
 
-        let ctx = ui.ctx().clone();
-        let query_stripped = query.trim_start_matches(&self.config_prefix).to_string();
+        let egui_ctx = ui.ctx().clone();
+        let query_stripped = ctx
+            .query
+            .trim_start_matches(&self.config_prefix)
+            .to_string();
         let config_python_header = self.config_python_header.clone();
         let promise = self.promise.get_or_insert_with(|| {
             let (sender, promise) = Promise::new();
@@ -86,14 +83,14 @@ impl Plugin for Math {
                                 stderr: err.to_string(),
                             },
                         });
-                        ctx.request_repaint();
+                        egui_ctx.request_repaint();
                     }
                     Err(err) => {
                         sender.send(CommandResult {
                             stdout: String::new(),
                             stderr: format!("{err:?}"),
                         });
-                        ctx.request_repaint();
+                        egui_ctx.request_repaint();
                     }
                 }
             });
@@ -128,25 +125,14 @@ impl Plugin for Math {
             });
         });
 
-        self.previous_query = query.clone();
-        PluginFlowControl::Break
+        self.previous_query = ctx.query.clone();
+        ctx.break_flow();
     }
 
-    fn before_search(
-        &mut self,
-        query: &mut String,
-        ctx: &egui::Context,
-        _: &GlutinWindowContext,
-    ) -> super::Preparation {
-        let preparation = self.list_state.before_search(ctx);
-
-        super::Preparation {
-            disable_cursor: preparation.disable_cursor,
-            plugin_flow_control: if query.starts_with('=') {
-                PluginFlowControl::Break
-            } else {
-                PluginFlowControl::Continue
-            },
+    fn before_search<'a>(&mut self, ctx: &mut PluginContext<'a>) {
+        self.list_state.before_search(ctx);
+        if ctx.query.starts_with('=') {
+            ctx.break_flow();
         }
     }
 

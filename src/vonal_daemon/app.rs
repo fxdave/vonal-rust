@@ -9,7 +9,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 
 use crate::{
     config::{ConfigBuilder, ConfigError, Dimension},
-    plugins::PluginManager,
+    plugins::{PluginContext, PluginManager},
     GlutinWindowContext,
 };
 
@@ -112,9 +112,11 @@ impl App {
         self.handle_escape(ctx, gl_window);
 
         // Notify plugins before render
-        let preparation = self
-            .plugin_manager
-            .before_search(&mut self.query, ctx, gl_window);
+        let preparation = self.plugin_manager.before_search(&mut PluginContext::new(
+            &mut self.query,
+            gl_window,
+            ctx,
+        ));
 
         // render window
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
@@ -244,7 +246,11 @@ impl App {
         });
 
         // Let plugins render their results
-        self.plugin_manager.search(&mut self.query, ui, gl_window);
+        let preparation = self
+            .plugin_manager
+            .search(ui, &mut PluginContext::new(&mut self.query, gl_window, ctx));
+
+        self.error = preparation.error;
     }
 
     fn render_error_screen(&self, ui: &mut egui::Ui, error: &String) {

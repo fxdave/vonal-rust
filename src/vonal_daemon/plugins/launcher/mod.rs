@@ -5,12 +5,11 @@ use std::process::Command;
 use crate::{
     config::{ConfigBuilder, ConfigError},
     theme::list::{CreateList, ListState},
-    GlutinWindowContext,
 };
 
 use self::indexer::traits::AppIndex;
 
-use super::{Plugin, PluginFlowControl, Preparation};
+use super::{Plugin, PluginContext};
 
 mod finder;
 mod indexer;
@@ -75,16 +74,11 @@ impl Launcher {
 }
 
 impl Plugin for Launcher {
-    fn search(
-        &mut self,
-        query: &mut String,
-        ui: &mut Ui,
-        gl_window: &GlutinWindowContext,
-    ) -> PluginFlowControl {
-        if !query.starts_with(&self.config_prefix) {
-            return PluginFlowControl::Continue;
+    fn search<'a>(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'a>) {
+        if !ctx.query.starts_with(&self.config_prefix) {
+            return;
         }
-        let keywords = query.trim_start_matches(&self.config_prefix);
+        let keywords = ctx.query.trim_start_matches(&self.config_prefix);
         let (keyword, args) = Self::split_query(keywords);
         let apps = self.find_apps(&keyword);
         let show_settings = keyword.starts_with(',');
@@ -99,7 +93,7 @@ impl Plugin for Launcher {
                 });
             });
 
-            return PluginFlowControl::Continue;
+            return;
         }
 
         self.list.update(ui.ctx(), apps.len(), |idx| {
@@ -112,38 +106,26 @@ impl Plugin for Launcher {
                     ui.label("Launch");
                     if ui.primary_action(&app.name).activated {
                         self.run(&app.exec, &args);
-                        query.clear();
-                        gl_window.window().set_visible(false);
+                        ctx.query.clear();
+                        ctx.gl_window.window().set_visible(false);
                         self.list = Default::default();
                     }
 
                     for action in &app.actions {
                         if ui.secondary_action(&action.name).activated {
                             self.run(&action.command, &args);
-                            query.clear();
-                            gl_window.window().set_visible(false);
+                            ctx.query.clear();
+                            ctx.gl_window.window().set_visible(false);
                             self.list = Default::default();
                         }
                     }
                 })
             }
         });
-
-        PluginFlowControl::Continue
     }
 
-    #[allow(clippy::useless_let_if_seq)]
-    fn before_search(
-        &mut self,
-        _query: &mut String,
-        ctx: &egui::Context,
-        _gl_window: &GlutinWindowContext,
-    ) -> Preparation {
-        let preparation = self.list.before_search(ctx);
-        Preparation {
-            disable_cursor: preparation.disable_cursor,
-            plugin_flow_control: PluginFlowControl::Continue,
-        }
+    fn before_search<'a>(&mut self, ctx: &mut PluginContext<'a>) {
+        self.list.before_search(ctx);
     }
 
     fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
