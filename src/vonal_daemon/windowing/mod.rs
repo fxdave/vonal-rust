@@ -1,4 +1,10 @@
 use egui_glow::glow;
+use glutin::config::ConfigTemplateBuilder;
+use glutin::context::{ContextApi, ContextAttributesBuilder, Version};
+use glutin::display::GetGlDisplay;
+use glutin::prelude::*;
+use glutin::surface::GlSurface;
+use glutin_winit::GlWindow;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
@@ -10,7 +16,7 @@ use x11::xlib::_XDisplay;
 pub fn create_display<TUserEvent>(
     event_loop: &EventLoop<TUserEvent>,
 ) -> (GlutinWindowContext, egui_glow::painter::Context) {
-    let winit_window = WindowBuilder::new()
+    let window_builder = WindowBuilder::new()
         .with_visible(false)
         .with_decorations(false)
         .with_resizable(false)
@@ -20,18 +26,49 @@ pub fn create_display<TUserEvent>(
             height: 10,
         })
         .with_transparent(true)
-        .with_title("Vonal")
-        .build(event_loop)
+        .with_title("Vonal");
+
+    let template_builder = ConfigTemplateBuilder::new().with_alpha_size(8);
+
+    let (window, gl_config) = glutin_winit::DisplayBuilder::new()
+        .with_window_builder(Some(window_builder.clone()))
+        .build(event_loop, template_builder, |configs| {
+            // Find the config with the maximum number of samples
+            configs
+                .reduce(|acc, current| {
+                    let is_current_transparent = current.supports_transparency().unwrap_or(false);
+                    let is_acc_transparent = acc.supports_transparency().unwrap_or(false);
+                    let gain_bigger_samples = current.num_samples() > acc.num_samples();
+
+                    let case_transparency_is_not_supported =
+                        !is_acc_transparent && !is_current_transparent && gain_bigger_samples;
+                    let case_transparency_is_supported =
+                        is_acc_transparent && is_current_transparent && gain_bigger_samples;
+                    let case_transparency_become_supported =
+                        !is_acc_transparent && is_current_transparent;
+                    let is_current_better = case_transparency_become_supported
+                        || case_transparency_is_supported
+                        || case_transparency_is_not_supported;
+
+                    if is_current_better {
+                        current
+                    } else {
+                        acc
+                    }
+                })
+                .unwrap()
+        })
         .unwrap();
 
-    let gl_window = unsafe { GlutinWindowContext::new(winit_window) };
+    let window = window.unwrap();
+    let gl_window = unsafe { GlutinWindowContext::new(window, gl_config) };
 
     let gl = unsafe {
         glow::Context::from_loader_function(|s| {
             let s = std::ffi::CString::new(s)
                 .expect("failed to construct C string from string for gl proc address");
 
-            gl_window.get_proc_address(&s)
+            gl_window.gl_display.get_proc_address(&s)
         })
     };
 
@@ -46,53 +83,45 @@ pub struct GlutinWindowContext {
 }
 
 impl GlutinWindowContext {
-    // refactor this function to use `glutin-winit` crate eventually.
-    // preferably add android support at the same time.
     #[allow(unsafe_code)]
-    unsafe fn new(winit_window: winit::window::Window) -> Self {
-        use glutin::prelude::*;
-        use raw_window_handle::*;
-
-        let raw_display_handle = winit_window.raw_display_handle();
+    unsafe fn new(winit_window: winit::window::Window, config: glutin::config::Config) -> Self {
         let raw_window_handle = winit_window.raw_window_handle();
-
-        // This was GlxThenEgl, but it broke
-        #[cfg(target_os = "linux")]
-        let preference = glutin::display::DisplayApiPreference::Egl;
-
-        let gl_display = glutin::display::Display::new(raw_display_handle, preference).unwrap();
-
-        let config_template = glutin::config::ConfigTemplateBuilder::new()
-            .compatible_with_native_window(raw_window_handle)
-            .build();
-
-        let config = gl_display
-            .find_configs(config_template)
-            .unwrap()
-            .next()
-            .unwrap();
-
         let context_attributes =
             glutin::context::ContextAttributesBuilder::new().build(Some(raw_window_handle));
-        // for surface creation.
-        let (width, height): (u32, u32) = winit_window.inner_size().into();
-        let surface_attributes =
-            glutin::surface::SurfaceAttributesBuilder::<glutin::surface::WindowSurface>::new()
-                .build(
-                    raw_window_handle,
-                    std::num::NonZeroU32::new(width).unwrap(),
-                    std::num::NonZeroU32::new(height).unwrap(),
-                );
-        // start creating the gl objects
-        let gl_context = gl_display
-            .create_context(&config, &context_attributes)
-            .unwrap();
 
+        // Since glutin by default tries to create OpenGL core context, which may not be
+        // present we should try gles.
+        let fallback_context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::Gles(None))
+            .build(Some(raw_window_handle));
+
+        // There are also some old devices that support neither modern OpenGL nor GLES.
+        // To support these we can try and create a 2.1 context.
+        let legacy_context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::OpenGl(Some(Version::new(2, 1))))
+            .build(Some(raw_window_handle));
+
+        let gl_display = config.display();
+        let gl_context_candidate = unsafe {
+            gl_display
+                .create_context(&config, &context_attributes)
+                .unwrap_or_else(|_| {
+                    gl_display
+                        .create_context(&config, &fallback_context_attributes)
+                        .unwrap_or_else(|_| {
+                            gl_display
+                                .create_context(&config, &legacy_context_attributes)
+                                .expect("failed to create context")
+                        })
+                })
+        };
+
+        let surface_attributes = winit_window.build_surface_attributes(Default::default());
         let gl_surface = gl_display
             .create_window_surface(&config, &surface_attributes)
             .unwrap();
 
-        let gl_context = gl_context.make_current(&gl_surface).unwrap();
+        let gl_context = gl_context_candidate.make_current(&gl_surface).unwrap();
 
         gl_surface
             .set_swap_interval(
@@ -114,7 +143,6 @@ impl GlutinWindowContext {
     }
 
     pub fn resize(&self, physical_size: winit::dpi::PhysicalSize<u32>) {
-        use glutin::surface::GlSurface;
         self.gl_surface.resize(
             &self.gl_context,
             physical_size.width.try_into().unwrap(),
@@ -123,13 +151,7 @@ impl GlutinWindowContext {
     }
 
     pub fn swap_buffers(&self) -> glutin::error::Result<()> {
-        use glutin::surface::GlSurface;
         self.gl_surface.swap_buffers(&self.gl_context)
-    }
-
-    fn get_proc_address(&self, addr: &std::ffi::CStr) -> *const std::ffi::c_void {
-        use glutin::display::GlDisplay;
-        self.gl_display.get_proc_address(addr)
     }
 
     pub fn get_focused_monitor(&self) -> Option<winit::monitor::MonitorHandle> {
