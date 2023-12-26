@@ -28,6 +28,7 @@ const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show {name} \
 "#;
 const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate {name}"#;
 const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e {name}"#;
+const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f {name}"#;
 
 struct MessageState {
     message: String,
@@ -42,6 +43,7 @@ pub struct Pass {
     config_command_type_password: String,
     config_command_generate_password: String,
     config_command_manual_add_password: String,
+    config_command_delete_password: String,
     config_prefix: String,
     config_list_length: usize,
 }
@@ -68,7 +70,7 @@ impl Pass {
         let stdout = String::from_utf8_lossy(&call.stdout);
         let passwords = stdout
             .lines()
-            .filter(|name| name.contains(keyword))
+            .filter(|name| keyword.is_empty() || name.contains(keyword))
             .map(ToString::to_string)
             .collect();
         Ok(passwords)
@@ -128,6 +130,10 @@ impl Pass {
         Ok(())
     }
 
+    fn delete_password(&self, name: &str) -> Result<(), std::io::Error> {
+        self.run_bash(&self.config_command_delete_password.replace("{name}", name))
+    }
+
     fn render_copy_button(
         &mut self,
         rui: &mut crate::theme::list::RowUi,
@@ -183,6 +189,19 @@ impl Pass {
                 return Ok(());
             }
             self.generate_password(password_name)?;
+            self.add_message(query.to_owned(), "Password is added sucessfully!".into());
+        }
+        Ok(())
+    }
+
+    fn render_delete_button(
+        &mut self,
+        rui: &mut crate::theme::list::RowUi,
+        password_name: &str,
+        query: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if rui.primary_action("delete").activated {
+            self.delete_password(password_name)?;
             self.add_message(query.to_owned(), "Password is added sucessfully!".into());
         }
         Ok(())
@@ -278,18 +297,42 @@ impl Plugin for Pass {
             return ctx.break_flow();
         }
 
-        match self.list_passwords(&keyword) {
+        let is_delete = keyword == "delete" || keyword.starts_with("delete ");
+        let password_name = if is_delete {
+            keyword
+                .trim_start_matches("delete")
+                .trim_start_matches(' ')
+                .to_string()
+        } else {
+            keyword
+        };
+
+        match self.list_passwords(&password_name) {
             Ok(passwords) => {
                 ui.add(
                     list::List::new()
                         .with_limit(self.config_list_length)
                         .with_builder(|list_ui| {
+                            if is_delete {
+                                list_ui.passive_row(|ui| {
+                                    ui.label(" ");
+                                    ui.label("Examples:");
+                                    ui.label("delete email");
+                                    ui.label(" ");
+                                });
+                            }
                             for pw in passwords {
                                 list_ui.row(|rui| {
                                     rui.label(&pw);
-                                    self.render_type_button(rui, ctx.gl_window, &pw, ctx.query);
-                                    rui.label("/");
-                                    self.render_copy_button(rui, ctx.gl_window, &pw, ctx.query);
+                                    if is_delete {
+                                        ctx.verify_result(
+                                            self.render_delete_button(rui, &pw, ctx.query),
+                                        );
+                                    } else {
+                                        self.render_type_button(rui, ctx.gl_window, &pw, ctx.query);
+                                        rui.label("/");
+                                        self.render_copy_button(rui, ctx.gl_window, &pw, ctx.query);
+                                    }
                                 });
                             }
                         }),
@@ -326,6 +369,10 @@ impl Plugin for Pass {
             self.config_command_manual_add_password = builder.get_or_create(
                 "command_manual_add_password_from_stdin",
                 DEFAULT_MANUAL_ADD_PASSWORD_COMMAND.trim_start().into(),
+            )?;
+            self.config_command_delete_password = builder.get_or_create(
+                "command_delete_password",
+                DEFAULT_DELETE_PASSWORD_COMMAND.trim_start().into(),
             )?;
             Ok(())
         })?;
