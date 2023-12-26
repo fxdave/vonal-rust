@@ -4,7 +4,7 @@ use std::process::Command;
 
 use crate::{
     config::{ConfigBuilder, ConfigError},
-    theme::list::{CreateList, ListState},
+    theme::list::{List, ListState},
 };
 
 use self::indexer::traits::AppIndex;
@@ -17,7 +17,6 @@ mod indexer;
 #[derive(Default)]
 pub struct Launcher {
     finder: finder::Finder,
-    list: ListState,
     config_prefix: String,
     config_index_path: bool,
     config_number_of_results: usize,
@@ -74,7 +73,7 @@ impl Launcher {
 }
 
 impl Plugin for Launcher {
-    fn search<'a>(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'a>) {
+    fn search(&mut self, ui: &mut Ui, ctx: &mut PluginContext) {
         if !ctx.query.starts_with(&self.config_prefix) {
             return;
         }
@@ -84,48 +83,38 @@ impl Plugin for Launcher {
         let show_settings = keyword.starts_with(',');
 
         if show_settings {
-            self.list.update(ui.ctx(), 1, |_| 1);
-            ui.list(self.list, |mut ui| {
-                ui.row(|mut ui| {
+            ui.add(List::new().with_builder(|list_ui| {
+                list_ui.row(|ui| {
                     if ui.primary_action("Refresh application cache").activated {
                         self.reindex_apps()
                     }
                 });
-            });
+            }));
 
             return;
         }
-
-        self.list.update(ui.ctx(), apps.len(), |idx| {
-            apps[idx].actions.len() + 1 // 1 primary action
-        });
-
-        ui.list(self.list, |mut ui| {
+        ui.add(List::new().with_builder(|list_ui| {
             for app in &apps {
-                ui.row(|mut ui| {
-                    ui.label("Launch");
-                    if ui.primary_action(&app.name).activated {
+                list_ui.row(|row_ui| {
+                    row_ui.label("Launch");
+                    if row_ui.primary_action(&app.name).activated {
                         self.run(&app.exec, &args);
                         ctx.query.clear();
                         ctx.gl_window.window().set_visible(false);
-                        self.list = Default::default();
+                        ListState::reset(row_ui.ui.ctx(), 0);
                     }
 
                     for action in &app.actions {
-                        if ui.secondary_action(&action.name).activated {
+                        if row_ui.secondary_action(&action.name).activated {
                             self.run(&action.command, &args);
                             ctx.query.clear();
                             ctx.gl_window.window().set_visible(false);
-                            self.list = Default::default();
+                            ListState::reset(row_ui.ui.ctx(), 0);
                         }
                     }
-                })
+                });
             }
-        });
-    }
-
-    fn before_search<'a>(&mut self, ctx: &mut PluginContext<'a>) {
-        self.list.before_search(ctx);
+        }));
     }
 
     fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {

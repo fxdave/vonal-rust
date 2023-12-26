@@ -7,8 +7,8 @@ use crate::{
     GlutinWindowContext,
 };
 
-//#[cfg(feature = "launcher_plugin")]
-//mod launcher;
+#[cfg(feature = "launcher_plugin")]
+mod launcher;
 #[cfg(feature = "math_plugin")]
 mod math;
 #[cfg(feature = "pass_plugin")]
@@ -49,6 +49,7 @@ impl<'a> PluginContext<'a> {
     pub fn break_flow(&mut self) {
         self.flow = PluginFlowControl::Break
     }
+    #[allow(dead_code)]
     pub fn disable_cursor(&mut self) {
         self.disable_cursor = true;
     }
@@ -108,8 +109,8 @@ impl PluginManager {
                 "math_plugin".to_string(),
                 #[cfg(feature = "pass_plugin")]
                 "pass_plugin".to_string(),
-                //#[cfg(feature = "launcher_plugin")]
-                //"launcher_plugin".to_string(),
+                #[cfg(feature = "launcher_plugin")]
+                "launcher_plugin".to_string(),
             ],
         )?;
 
@@ -122,15 +123,14 @@ impl PluginManager {
                     "math_plugin" => self.plugins.push(Box::new(math::Math::new())),
                     #[cfg(feature = "pass_plugin")]
                     "pass_plugin" => self.plugins.push(Box::new(pass::Pass::new())),
-                    //#[cfg(feature = "launcher_plugin")]
-                    //"launcher_plugin" => self.plugins.push(Box::new(launcher::Launcher::new())),
-                    //plugin_name => return Err(ConfigError::BadEntryError {
-                    //    name: "plugins",
-                    //    message: Some(format!(
-                    //        "The specified plugin named \"{plugin_name}\" is unknown or vonal is not compiled with it."
-                    //    )),
-                    //}),
-                    _donothing => {}
+                    #[cfg(feature = "launcher_plugin")]
+                    "launcher_plugin" => self.plugins.push(Box::new(launcher::Launcher::new())),
+                    plugin_name => return Err(ConfigError::BadEntryError {
+                        name: "plugins",
+                        message: Some(format!(
+                            "The specified plugin named \"{plugin_name}\" is unknown or vonal is not compiled with it."
+                        )),
+                    })
                 }
             }
 

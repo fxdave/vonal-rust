@@ -9,6 +9,7 @@ pub struct RowUi<'a> {
 }
 
 impl<'a> RowUi<'a> {
+    #[allow(dead_code)]
     pub fn passive(&mut self, callback: impl FnOnce(&mut Ui)) {
         callback(self.ui)
     }
