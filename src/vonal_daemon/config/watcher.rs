@@ -37,7 +37,7 @@ impl Watcher {
 
     pub fn get_stream(&mut self) -> impl Iterator<Item = ConfigEvent> + '_ {
         std::iter::repeat(())
-            .map(|_nothing| {
+            .flat_map(|_nothing| {
                 let events = self
                     .inotify
                     .read_events_blocking(&mut self.buffer)
@@ -57,6 +57,5 @@ impl Watcher {
                     })
                     .collect::<Vec<_>>()
             })
-            .flatten()
     }
 }

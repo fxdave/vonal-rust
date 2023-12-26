@@ -134,7 +134,7 @@ fn handle_platform_event(
 ) {
     match event {
         Event::RedrawRequested(_) => {
-            *control_flow = redraw(app, egui_glow, &gl_window, gl);
+            *control_flow = redraw(app, egui_glow, gl_window, gl);
         }
         Event::WindowEvent { event, .. } => {
             match event {
@@ -189,7 +189,7 @@ fn handle_platform_event(
                         message: None,
                     }) => app.set_error(Some(format!("Wrong config file entry at {name}."))),
                     Err(ConfigError::ParseError) => {
-                        app.set_error(Some(format!("Config syntax error")))
+                        app.set_error(Some("Config syntax error".to_string()))
                     }
                 }
                 gl_window.window().request_redraw();
@@ -203,11 +203,11 @@ fn handle_platform_event(
 fn parse_cli(commands: Vec<Command>, gl_window: &GlutinWindowContext, app: &mut app::App) {
     for command in &commands {
         match command {
-            Command::Show => show_window(&gl_window, true),
-            Command::Hide => hide_window(&gl_window),
+            Command::Show => show_window(gl_window, true),
+            Command::Hide => hide_window(gl_window),
             Command::Toggle => {
                 let show = !gl_window.window().is_visible().unwrap_or(false);
-                show_window(&gl_window, show);
+                show_window(gl_window, show);
             }
             Command::SetQuery { query } => {
                 app.query = query.into();

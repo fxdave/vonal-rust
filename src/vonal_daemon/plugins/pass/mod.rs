@@ -1,6 +1,6 @@
 use crate::{
     config::{ConfigBuilder, ConfigError},
-    theme::list::{CreateList, ListState},
+    theme::list::{self, ListState},
 };
 use std::{
     error::Error,
@@ -37,7 +37,6 @@ struct MessageState {
 #[derive(Default)]
 pub struct Pass {
     message: Option<MessageState>,
-    list: ListState,
     config_command_list_passwords: String,
     config_command_copy_password: String,
     config_command_type_password: String,
@@ -79,7 +78,7 @@ impl Pass {
         let stdout = Command::new("sh")
             .stdout(Stdio::piped())
             .arg("-c")
-            .arg(self.config_command_copy_password.replace("{name}", &pw))
+            .arg(self.config_command_copy_password.replace("{name}", pw))
             .spawn()?
             .stdout;
         if let Some(stdout) = stdout {
@@ -101,14 +100,14 @@ impl Pass {
     }
 
     fn type_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(&self.config_command_type_password.replace("{name}", &name))
+        self.run_bash(&self.config_command_type_password.replace("{name}", name))
     }
 
     fn generate_password(&self, name: &str) -> Result<(), std::io::Error> {
         self.run_bash(
             &self
                 .config_command_generate_password
-                .replace("{name}", &name),
+                .replace("{name}", name),
         )
     }
 
@@ -120,7 +119,7 @@ impl Pass {
             .arg(
                 &self
                     .config_command_manual_add_password
-                    .replace("{name}", &name),
+                    .replace("{name}", name),
             )
             .spawn()?;
         let child_stdin = child.stdin.as_mut().unwrap();
@@ -133,7 +132,7 @@ impl Pass {
         &mut self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
-        pw: &String,
+        pw: &str,
         query: &mut String,
     ) {
         if rui.primary_action("Copy").activated {
@@ -143,7 +142,7 @@ impl Pass {
                 rui.label(&e.to_string());
             } else {
                 *query = "".into();
-                self.list = Default::default();
+                ListState::reset(rui.ui.ctx(), 0);
             }
         }
     }
@@ -157,22 +156,18 @@ impl Pass {
     ) {
         if rui.primary_action("Type").activated {
             gl_window.window.set_visible(false);
-            if let Err(e) = self.type_password(&pw) {
+            if let Err(e) = self.type_password(pw) {
                 gl_window.window.set_visible(true);
                 rui.label(&e.to_string());
             } else {
                 *query = "".into();
-                self.list = Default::default();
+                ListState::reset(rui.ui.ctx(), 0);
             }
         }
     }
 
     fn is_existing_password(&self, password: &str) -> Result<bool, Box<dyn Error>> {
-        Ok(self
-            .list_passwords("")?
-            .iter()
-            .find(|pw| *pw == password)
-            .is_some())
+        Ok(self.list_passwords("")?.iter().any(|pw| pw == password))
     }
 
     fn render_generate_button(
@@ -187,7 +182,7 @@ impl Pass {
                 self.add_message(query.to_owned(), "Please remove the password first.".into());
                 return Ok(());
             }
-            self.generate_password(&password_name)?;
+            self.generate_password(password_name)?;
             self.add_message(query.to_owned(), "Password is added sucessfully!".into());
         }
         Ok(())
@@ -209,7 +204,7 @@ impl Pass {
                 self.add_message(query.to_owned(), "Please remove the password first.".into());
                 return Ok(());
             }
-            self.add_password_manually(&password_name, &password)?;
+            self.add_password_manually(password_name, password)?;
             self.add_message(query.to_owned(), "Password is added sucessfully!".into());
         }
         Ok(())
@@ -221,7 +216,7 @@ impl Pass {
 
     fn render_message(&mut self, ui: &mut egui::Ui, query: &str) {
         let should_clear_message = if let Some(message) = &self.message {
-            &message.query != query
+            message.query != query
         } else {
             false
         };
@@ -238,12 +233,12 @@ impl Pass {
 }
 
 impl Plugin for Pass {
-    fn search<'a>(&mut self, ui: &mut egui::Ui, ctx: &mut PluginContext<'a>) {
+    fn search(&mut self, ui: &mut egui::Ui, ctx: &mut PluginContext<'_>) {
         if !ctx.query.starts_with(&self.config_prefix) {
             return;
         }
 
-        self.render_message(ui, &ctx.query);
+        self.render_message(ui, ctx.query);
 
         let keyword = ctx
             .query
@@ -253,9 +248,9 @@ impl Plugin for Pass {
             .to_owned();
 
         if keyword == "add" || keyword.starts_with("add ") {
-            let segments: Vec<&str> = keyword.split(" ").collect();
-            ui.list(ctx.egui_ctx, &mut self.list, |list_ui, ui| {
-                list_ui.passive(|| {
+            let segments: Vec<&str> = keyword.split(' ').collect();
+            ui.add(list::List::new().with_builder(|list_ui| {
+                list_ui.passive_row(|ui| {
                     ui.label(" ");
                     ui.label("Examples:");
                     ui.label("add email");
@@ -263,51 +258,48 @@ impl Plugin for Pass {
                     ui.label(" ");
                 });
                 if segments.len() < 3 {
-                    list_ui.row(ui, |mut rui| {
+                    list_ui.row(|rui| {
                         ctx.verify_result(self.render_generate_button(
-                            &mut rui,
+                            rui,
                             segments.get(1).unwrap_or(&""),
-                            &ctx.query,
+                            ctx.query,
                         ));
                     });
                 }
-                list_ui.row(ui, |mut rui| {
+                list_ui.row(|rui| {
                     ctx.verify_result(self.render_manual_add_button(
-                        &mut rui,
+                        rui,
                         segments.get(1).unwrap_or(&""),
                         segments.get(2).unwrap_or(&""),
-                        &ctx.query,
+                        ctx.query,
                     ));
                 });
-            });
+            }));
             return ctx.break_flow();
         }
 
         match self.list_passwords(&keyword) {
             Ok(passwords) => {
-                const NUMBER_OF_BUTTONS: usize = 2;
-                self.list
-                    .update(ui.ctx(), passwords.len(), |_| NUMBER_OF_BUTTONS);
-                ui.list_limited(
-                    self.config_list_length,
-                    self.list,
-                    |mut list_ui, ui: &mut egui::Ui| {
-                        for pw in passwords {
-                            list_ui.row(ui, |mut rui| {
-                                rui.label(&pw);
-                                self.render_type_button(&mut rui, ctx.gl_window, &pw, ctx.query);
-                                rui.label("/");
-                                self.render_copy_button(&mut rui, ctx.gl_window, &pw, ctx.query);
-                            });
-                        }
-                    },
+                ui.add(
+                    list::List::new()
+                        .with_limit(self.config_list_length)
+                        .with_builder(|list_ui| {
+                            for pw in passwords {
+                                list_ui.row(|rui| {
+                                    rui.label(&pw);
+                                    self.render_type_button(rui, ctx.gl_window, &pw, ctx.query);
+                                    rui.label("/");
+                                    self.render_copy_button(rui, ctx.gl_window, &pw, ctx.query);
+                                });
+                            }
+                        }),
                 );
             }
             Err(err) => {
                 ui.label(err.to_string());
             }
         }
-        return ctx.break_flow();
+        ctx.break_flow()
     }
 
     fn configure(&mut self, mut builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {

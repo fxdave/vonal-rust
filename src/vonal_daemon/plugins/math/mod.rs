@@ -8,7 +8,7 @@ use std::{
 use super::{Plugin, PluginContext};
 use crate::{
     config::{ConfigBuilder, ConfigError},
-    theme::list::{CreateList, ListState},
+    theme::list::List,
     utils::clipboard::copy_to_clipboard,
 };
 
@@ -17,7 +17,6 @@ pub struct Math {
     promise: Option<Promise<CommandResult>>,
     previous_query: String,
     result: Option<CommandResult>,
-    list_state: ListState,
     config_prefix: String,
     config_python_header: String,
 }
@@ -34,7 +33,6 @@ impl Math {
             promise: Default::default(),
             previous_query: Default::default(),
             result: Default::default(),
-            list_state: ListState::new(-1),
             config_prefix: Default::default(),
             config_python_header: Default::default(),
         }
@@ -42,7 +40,7 @@ impl Math {
 }
 // TODO: async call, move inside textbox
 impl Plugin for Math {
-    fn search<'a>(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'a>) {
+    fn search(&mut self, ui: &mut Ui, ctx: &mut PluginContext) {
         if !ctx.query.starts_with(&self.config_prefix) {
             return;
         }
@@ -116,21 +114,23 @@ impl Plugin for Math {
             .as_ref()
             .map(|x| x.stdout.to_string())
             .unwrap_or_default();
-        self.list_state.update(ui.ctx(), 1, |_x| 1);
-        ui.list(self.list_state, |mut ui| {
-            ui.row(|mut ui| {
-                if ui.secondary_action("Copy").activated {
-                    copy_to_clipboard(&stdout_to_copy)
-                }
-            });
-        });
+        ui.add(
+            List::new()
+                .with_initally_selected_row(-1)
+                .with_builder(|ui| {
+                    ui.row(|ui| {
+                        if ui.secondary_action("Copy").activated {
+                            copy_to_clipboard(&stdout_to_copy)
+                        }
+                    });
+                }),
+        );
 
         self.previous_query = ctx.query.clone();
         ctx.break_flow();
     }
 
-    fn before_search<'a>(&mut self, ctx: &mut PluginContext<'a>) {
-        self.list_state.before_search(ctx);
+    fn before_search(&mut self, ctx: &mut PluginContext) {
         if ctx.query.starts_with('=') {
             ctx.break_flow();
         }

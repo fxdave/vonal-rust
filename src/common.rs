@@ -51,7 +51,7 @@ impl<'a> FromIterator<&'a str> for CommandParseResult {
         }
 
         let commands: Result<Vec<Command>, CommandParseError> = commands.into_iter().collect();
-        let commands = commands.and_then(|vector| Ok(Commands(vector)));
+        let commands = commands.map(Commands);
         CommandParseResult(commands)
     }
 }

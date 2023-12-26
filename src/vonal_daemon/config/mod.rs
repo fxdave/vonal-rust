@@ -22,7 +22,7 @@ pub struct ConfigBuilder {
 impl ConfigBuilder {
     pub fn new() -> Result<Self, ConfigError> {
         let file_path = get_config_file_path();
-        let file = fs::read_to_string(&file_path).ok();
+        let file = fs::read_to_string(file_path).ok();
         let table = match file {
             Some(file) => file.parse::<Table>().map_err(|_| ConfigError::ParseError)?,
             None => Table::default(),
@@ -30,7 +30,7 @@ impl ConfigBuilder {
         Ok(Self { config: table })
     }
     pub fn new_safe() -> Self {
-        let table = Self::new().and_then(|s| Ok(s.config)).unwrap_or_default();
+        let table = Self::new().map(|s| s.config).unwrap_or_default();
         Self { config: table }
     }
 
@@ -189,7 +189,7 @@ impl ToConfig for String {
 impl<T: FromConfig> FromConfig for Vec<T> {
     fn from_config(raw: &Value) -> Option<Self> {
         raw.as_array()?
-            .into_iter()
+            .iter()
             .map(|item| T::from_config(item))
             .collect()
     }
@@ -252,7 +252,7 @@ impl FromConfig for Dimension {
             }
 
             let number: f64 = value.parse().ok()?;
-            return Some(Dimension::Point(number));
+            Some(Dimension::Point(number))
         } else {
             Some(Dimension::Point(raw.as_float()?))
         }
@@ -263,7 +263,7 @@ impl ToConfig for Dimension {
     fn to_config(self) -> Value {
         match self {
             Dimension::Percentage(p) => Value::String(format!("{}%", p * 100.)),
-            Dimension::Point(p) => Value::Float(p as f64),
+            Dimension::Point(p) => Value::Float(p),
         }
     }
 }

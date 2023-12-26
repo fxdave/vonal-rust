@@ -10,6 +10,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use crate::{
     config::{ConfigBuilder, ConfigError, Dimension},
     plugins::{PluginContext, PluginManager},
+    theme::list::ListState,
     GlutinWindowContext,
 };
 
@@ -140,7 +141,7 @@ impl App {
             if let Some(error) = self.error.as_ref() {
                 self.render_error_screen(ui, error);
             } else {
-                self.render_search_screen(ui, ctx, preparation, gl_window);
+                self.render_search_screen(ctx, ui, gl_window, preparation.disable_cursor);
             }
 
             if let Some(monitor) = focused_monitor.as_ref() {
@@ -235,22 +236,21 @@ impl App {
 
     fn render_search_screen(
         &mut self,
-        ui: &mut egui::Ui,
         ctx: &egui::Context,
-        preparation: crate::plugins::Preparation,
+        ui: &mut egui::Ui,
         gl_window: &GlutinWindowContext,
+        disable_cursor: bool,
     ) {
         ui.horizontal_top(|ui| {
-            self.render_mode_indicator_icon(ui, ctx);
-            self.render_search_bar(ui, ctx, preparation.disable_cursor);
+            self.render_mode_indicator_icon(ui);
+            self.render_search_bar(ui, disable_cursor);
         });
-
         // Let plugins render their results
-        let preparation = self
+        let post_operation = self
             .plugin_manager
             .search(ui, &mut PluginContext::new(&mut self.query, gl_window, ctx));
 
-        self.error = preparation.error;
+        self.error = post_operation.error;
     }
 
     fn render_error_screen(&self, ui: &mut egui::Ui, error: &String) {
@@ -266,7 +266,8 @@ impl App {
         ui.add_space(15.);
     }
 
-    fn render_search_bar(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, disable_cursor: bool) {
+    fn render_search_bar(&mut self, ui: &mut egui::Ui, disable_cursor: bool) {
+        let disable_cursor = disable_cursor || ListState::get_disable_cursor(ui.ctx());
         let TextEditOutput {
             mut state,
             response,
@@ -296,7 +297,7 @@ impl App {
         })
     }
 
-    fn render_mode_indicator_icon(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn render_mode_indicator_icon(&mut self, ui: &mut egui::Ui) {
         if !self.config.show_mode_indicator {
             ui.add_space(15.);
             return;
@@ -306,7 +307,7 @@ impl App {
         ui.add_sized(
             [50., 50.],
             Image::new(
-                self.prompt_icon.texture_id(ctx),
+                self.prompt_icon.texture_id(ui.ctx()),
                 vec2(size.x * 15. / size.y, 15.),
             ),
         );

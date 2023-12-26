@@ -9,8 +9,8 @@ use crate::{
 
 //#[cfg(feature = "launcher_plugin")]
 //mod launcher;
-//#[cfg(feature = "math_plugin")]
-//mod math;
+#[cfg(feature = "math_plugin")]
+mod math;
 #[cfg(feature = "pass_plugin")]
 mod pass;
 
@@ -86,8 +86,8 @@ pub trait Plugin {
     fn configure(&mut self, builder: ConfigBuilder) -> Result<ConfigBuilder, ConfigError> {
         Ok(builder)
     }
-    fn search<'a>(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'a>);
-    fn before_search<'a>(&mut self, _ctx: &mut PluginContext<'a>) {}
+    fn search(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'_>);
+    fn before_search(&mut self, _ctx: &mut PluginContext<'_>) {}
 }
 
 #[derive(Default)]
@@ -104,8 +104,8 @@ impl PluginManager {
         let plugins = builder.get_or_create(
             "plugins",
             vec![
-                //#[cfg(feature = "math_plugin")]
-                //"math_plugin".to_string(),
+                #[cfg(feature = "math_plugin")]
+                "math_plugin".to_string(),
                 #[cfg(feature = "pass_plugin")]
                 "pass_plugin".to_string(),
                 //#[cfg(feature = "launcher_plugin")]
@@ -118,8 +118,8 @@ impl PluginManager {
 
             for plugin in &plugins {
                 match plugin.as_str() {
-                    //#[cfg(feature = "math_plugin")]
-                    //"math_plugin" => self.plugins.push(Box::new(math::Math::new())),
+                    #[cfg(feature = "math_plugin")]
+                    "math_plugin" => self.plugins.push(Box::new(math::Math::new())),
                     #[cfg(feature = "pass_plugin")]
                     "pass_plugin" => self.plugins.push(Box::new(pass::Pass::new())),
                     //#[cfg(feature = "launcher_plugin")]
@@ -130,7 +130,7 @@ impl PluginManager {
                     //        "The specified plugin named \"{plugin_name}\" is unknown or vonal is not compiled with it."
                     //    )),
                     //}),
-                    donothing => {}
+                    _donothing => {}
                 }
             }
 
@@ -144,7 +144,7 @@ impl PluginManager {
         Ok(builder)
     }
 
-    pub fn search<'a>(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'a>) -> PostOperation {
+    pub fn search(&mut self, ui: &mut Ui, ctx: &mut PluginContext<'_>) -> PostOperation {
         ui.horizontal_top(|ui| {
             ui.add_space(15.);
             ui.vertical(|ui| {
@@ -169,7 +169,7 @@ impl PluginManager {
         }
     }
 
-    pub fn before_search<'a>(&mut self, ctx: &mut PluginContext<'a>) -> Preparation {
+    pub fn before_search(&mut self, ctx: &mut PluginContext<'_>) -> Preparation {
         for plugin in &mut self.plugins {
             plugin.before_search(ctx);
             if let PluginFlowControl::Break = ctx.flow {
