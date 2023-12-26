@@ -7,16 +7,18 @@ use crate::{
     theme::list::{List, ListState},
 };
 
-use self::indexer::traits::AppIndex;
+use self::{cache::Cached, indexer::traits::AppIndex};
 
 use super::{Plugin, PluginContext};
 
+mod cache;
 mod finder;
 mod indexer;
 
 #[derive(Default)]
 pub struct Launcher {
     finder: finder::Finder,
+    results: Cached<Vec<AppIndex>>,
     config_prefix: String,
     config_index_path: bool,
     config_number_of_results: usize,
@@ -50,13 +52,15 @@ impl Launcher {
         finder::Finder::new(indices)
     }
 
-    fn find_apps(&self, query: &str) -> Vec<AppIndex> {
-        self.finder
-            .find(query, self.config_number_of_results)
-            .into_iter()
-            .map(|app_match| app_match.index)
-            .cloned()
-            .collect()
+    fn find_apps(&mut self, query: &str) -> Vec<AppIndex> {
+        self.results.get_or_create(query.to_string(), || {
+            self.finder
+                .find(query, self.config_number_of_results)
+                .into_iter()
+                .map(|app_match| app_match.index)
+                .cloned()
+                .collect::<Vec<AppIndex>>()
+        })
     }
 
     fn split_query(query: &str) -> (String, String) {
@@ -79,7 +83,6 @@ impl Plugin for Launcher {
         }
         let keywords = ctx.query.trim_start_matches(&self.config_prefix);
         let (keyword, args) = Self::split_query(keywords);
-        let apps = self.find_apps(&keyword);
         let show_settings = keyword.starts_with(',');
 
         if show_settings {
@@ -94,7 +97,8 @@ impl Plugin for Launcher {
             return;
         }
         ui.add(List::new().with_builder(|list_ui| {
-            for app in &apps {
+            let apps = self.find_apps(&keyword);
+            for app in apps {
                 list_ui.row(|row_ui| {
                     row_ui.label("Launch");
                     if row_ui.primary_action(&app.name).activated {
