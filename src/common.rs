@@ -8,6 +8,7 @@ pub enum Command {
     Hide,
     Toggle,
     SetQuery { query: String },
+    Restart,
 }
 
 fn parse_command(
@@ -18,6 +19,7 @@ fn parse_command(
         "show" => Ok(Command::Show),
         "hide" => Ok(Command::Hide),
         "toggle" => Ok(Command::Toggle),
+        "restart" => Ok(Command::Restart),
         "set_query" => Ok(Command::SetQuery {
             query: tokens
                 .next()
@@ -36,7 +38,7 @@ pub struct Commands(pub Vec<Command>);
 #[derive(Debug)]
 pub enum CommandParseError {
     UnknownCommand { command: String },
-    EmptyArgument
+    EmptyArgument,
 }
 
 pub struct CommandParseResult(pub Result<Commands, CommandParseError>);

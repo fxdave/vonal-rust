@@ -214,8 +214,16 @@ fn parse_cli(commands: Vec<Command>, gl_window: &GlutinWindowContext, app: &mut 
                 app.reset_search_input_cursor = true;
                 gl_window.window().request_redraw();
             }
+            Command::Restart => restart(),
         }
     }
+}
+
+fn restart() {
+    println!("Restarting. ");
+    use std::os::unix::process::CommandExt;
+    std::process::Command::new("/proc/self/exe").exec();
+    std::process::exit(0);
 }
 
 fn hide_window(gl_window: &GlutinWindowContext) {
