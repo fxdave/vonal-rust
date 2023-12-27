@@ -59,6 +59,9 @@ A configurable password manager plugin. It works with every password managers, h
   - trigger: `pass`
   - example commands:
     - `pass fa` list every account name containing "fa"
+    - `pass add email` generates a password named "email"
+    - `pass add email 123456` adds new password named "email" with password "123456"
+    - `pass delete em` search for every password name containing `em` with offering a delete option for each 
 
 Warning: On update you have to manually enable new plugins.
 
@@ -66,6 +69,7 @@ Warning: On update you have to manually enable new plugins.
 
 Synopsis: `vonalc commandA arg1 arg2 commandB arg1 ...`
 
+- `restart`: restarts the vonal daemon
 - `show`: show the window
 - `hide`: hide the window
 - `toggle`: show/hide the window
