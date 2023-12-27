@@ -4,6 +4,7 @@ use egui::{Context, Ui};
 
 use crate::{
     config::{ConfigBuilder, ConfigError},
+    theme::list::ListState,
     GlutinWindowContext,
 };
 
@@ -95,6 +96,8 @@ pub trait Plugin {
 pub struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
     config_plugins: Vec<String>,
+    /// the nth plugin returned PluginFlowControl::break during search
+    flow_broke_at: usize,
 }
 impl PluginManager {
     pub fn new() -> Self {
@@ -153,9 +156,14 @@ impl PluginManager {
                     return;
                 }
 
-                for i in &mut self.plugins {
-                    i.search(ui, ctx);
+                for (i, plugin) in &mut self.plugins.iter_mut().enumerate() {
+                    plugin.search(ui, ctx);
                     if let PluginFlowControl::Break = ctx.flow {
+                        // Clear the list on switching between plugins
+                        if self.flow_broke_at != i {
+                            ListState::clear(ui.ctx());
+                            self.flow_broke_at = i;
+                        }
                         break;
                     }
                 }

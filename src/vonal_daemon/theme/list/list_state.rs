@@ -95,4 +95,10 @@ impl ListState {
     pub fn reset(ctx: &Context, selected_row: i32) {
         ctx.data_mut(|d| d.insert_persisted(Id::new(LIST_ID), Self::new(selected_row)));
     }
+    pub fn clear(ctx: &Context) {
+        let current: Option<Self> = ctx.data_mut(|d| d.get_persisted(Id::new(LIST_ID)));
+        if current.is_some() {
+            ctx.data_mut(|d| d.remove::<Self>(Id::new(LIST_ID)));
+        }
+    }
 }
