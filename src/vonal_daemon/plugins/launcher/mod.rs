@@ -104,7 +104,7 @@ impl Plugin for Launcher {
                     if row_ui.primary_action(&app.name).activated {
                         self.run(&app.exec, &args);
                         ctx.query.clear();
-                        ctx.gl_window.window().set_visible(false);
+                        ctx.gl_window.set_visible(false);
                         ListState::reset(row_ui.ui.ctx(), 0);
                     }
 
@@ -112,7 +112,7 @@ impl Plugin for Launcher {
                         if row_ui.secondary_action(&action.name).activated {
                             self.run(&action.command, &args);
                             ctx.query.clear();
-                            ctx.gl_window.window().set_visible(false);
+                            ctx.gl_window.set_visible(false);
                             ListState::reset(row_ui.ui.ctx(), 0);
                         }
                     }

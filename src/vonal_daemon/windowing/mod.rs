@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use egui_glow::glow;
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, Version};
@@ -9,7 +11,8 @@ use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 use winit::dpi::PhysicalSize;
-use winit::event_loop::EventLoop;
+use winit::event_loop::{EventLoop, EventLoopWindowTarget};
+use winit::platform::wayland::WindowBuilderExtWayland;
 use winit::window::WindowBuilder;
 use x11::xlib::_XDisplay;
 
@@ -26,7 +29,8 @@ pub fn create_display<TUserEvent>(
             height: 10,
         })
         .with_transparent(true)
-        .with_title("Vonal");
+        .with_title("Vonal")
+        .with_name("vonal", "vonal");
 
     let template_builder = ConfigTemplateBuilder::new().with_alpha_size(8);
 
@@ -61,7 +65,7 @@ pub fn create_display<TUserEvent>(
         .unwrap();
 
     let window = window.unwrap();
-    let gl_window = unsafe { GlutinWindowContext::new(window, gl_config) };
+    let gl_window = unsafe { GlutinWindowContext::new(window, window_builder, gl_config) };
 
     let gl = unsafe {
         glow::Context::from_loader_function(|s| {
@@ -80,11 +84,21 @@ pub struct GlutinWindowContext {
     pub gl_context: glutin::context::PossiblyCurrentContext,
     pub gl_display: glutin::display::Display,
     pub gl_surface: glutin::surface::Surface<glutin::surface::WindowSurface>,
+    gl_config: glutin::config::Config,
+    window_builder: WindowBuilder,
+    is_visible: Cell<bool>,
+    is_presented: Cell<bool>,
+    requested_size: Cell<PhysicalSize<u32>>,
+    is_resized: Cell<bool>,
 }
 
 impl GlutinWindowContext {
     #[allow(unsafe_code)]
-    unsafe fn new(winit_window: winit::window::Window, config: glutin::config::Config) -> Self {
+    unsafe fn new(
+        winit_window: winit::window::Window,
+        window_builder: WindowBuilder,
+        config: glutin::config::Config,
+    ) -> Self {
         let raw_window_handle = winit_window.raw_window_handle();
         let context_attributes =
             glutin::context::ContextAttributesBuilder::new().build(Some(raw_window_handle));
@@ -122,19 +136,19 @@ impl GlutinWindowContext {
             .unwrap();
 
         let gl_context = gl_context_candidate.make_current(&gl_surface).unwrap();
-
-        gl_surface
-            .set_swap_interval(
-                &gl_context,
-                glutin::surface::SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()),
-            )
-            .unwrap();
+        set_swap_interval(&gl_context, &gl_surface);
 
         GlutinWindowContext {
             window: winit_window,
             gl_context,
             gl_display,
             gl_surface,
+            gl_config: config,
+            window_builder,
+            is_visible: Cell::new(false),
+            is_presented: Cell::new(false),
+            requested_size: Cell::new(PhysicalSize::default()),
+            is_resized: Cell::new(false),
         }
     }
 
@@ -150,11 +164,87 @@ impl GlutinWindowContext {
         );
     }
 
+    pub fn set_size(&self, size: PhysicalSize<u32>) {
+        if self.requested_size.get() == size {
+            return;
+        }
+
+        self.requested_size.set(size);
+        self.is_resized.set(true);
+        self.resize(size);
+        self.window.set_inner_size(size);
+        self.window.set_max_inner_size(Some(size));
+    }
+
+    /// Returns whether the size has changed since the last call
+    pub fn take_is_resized(&self) -> bool {
+        self.is_resized.replace(false)
+    }
+
     pub fn swap_buffers(&self) -> glutin::error::Result<()> {
+        self.is_presented.set(true);
         self.gl_surface.swap_buffers(&self.gl_context)
     }
 
+    pub fn is_wayland(&self) -> bool {
+        matches!(
+            self.window.raw_display_handle(),
+            RawDisplayHandle::Wayland(_)
+        )
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.window
+            .is_visible()
+            .unwrap_or_else(|| self.is_visible.get())
+    }
+
+    pub fn set_visible(&self, visible: bool) {
+        self.is_visible.set(visible);
+        self.window.set_visible(visible);
+        if visible {
+            self.window.request_redraw();
+        }
+    }
+
+    /// Wayland can't hide a window, so the presented one is replaced
+    /// with a new window that stays unmapped until it's drawn again.
+    pub fn recreate_hidden_window<TUserEvent>(
+        &mut self,
+        event_loop: &EventLoopWindowTarget<TUserEvent>,
+    ) {
+        if !self.is_wayland() || self.is_visible.get() || !self.is_presented.get() {
+            return;
+        }
+
+        let window =
+            glutin_winit::finalize_window(event_loop, self.window_builder.clone(), &self.gl_config)
+                .unwrap();
+        let surface_attributes = window.build_surface_attributes(Default::default());
+        let gl_surface = unsafe {
+            self.gl_display
+                .create_window_surface(&self.gl_config, &surface_attributes)
+                .unwrap()
+        };
+        self.gl_context.make_current(&gl_surface).unwrap();
+        set_swap_interval(&self.gl_context, &gl_surface);
+
+        // the old surface has to be dropped before its window
+        drop(std::mem::replace(&mut self.gl_surface, gl_surface));
+        self.window = window;
+        self.is_presented.set(false);
+        self.requested_size.set(PhysicalSize::default());
+    }
+
     pub fn get_focused_monitor(&self) -> Option<winit::monitor::MonitorHandle> {
+        if self.is_wayland() {
+            // Wayland doesn't expose the global pointer position
+            return self
+                .window
+                .current_monitor()
+                .or_else(|| self.window.available_monitors().next());
+        }
+
         let pointer = self.query_pointer();
         let mut monitors = self.window.available_monitors().filter(|monitor| {
             let position = monitor.position();
@@ -213,4 +303,16 @@ impl GlutinWindowContext {
 
         (rx, ry)
     }
+}
+
+fn set_swap_interval(
+    gl_context: &glutin::context::PossiblyCurrentContext,
+    gl_surface: &glutin::surface::Surface<glutin::surface::WindowSurface>,
+) {
+    gl_surface
+        .set_swap_interval(
+            gl_context,
+            glutin::surface::SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()),
+        )
+        .unwrap();
 }
