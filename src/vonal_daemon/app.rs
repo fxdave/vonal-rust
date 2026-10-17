@@ -65,12 +65,6 @@ impl App {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     pub fn update(&mut self, ctx: &egui::Context, gl_window: &GlutinWindowContext) {
-        // reset size
-        gl_window.resize(PhysicalSize {
-            width: 10,
-            height: 10,
-        });
-
         // Set wallpaper
         let frame = egui::containers::Frame {
             fill: match self.error {
@@ -174,10 +168,7 @@ impl App {
                     height
                 } + ((self.config.border_width).max(self.config.shadow_size)
                     * ctx.pixels_per_point()) as u32;
-                let size = PhysicalSize { width, height };
-                gl_window.resize(size);
-                gl_window.window().set_inner_size(size);
-                gl_window.window().set_max_inner_size(Some(size));
+                gl_window.set_size(PhysicalSize { width, height });
             } else {
                 println!("VONAL: no monitor found")
             }

@@ -258,6 +258,12 @@ fn redraw(
         egui_ctx.set_pixels_per_point(scale_factor);
         app.update(egui_ctx, gl_window);
     });
+
+    // the layout was made for the old size, so it's only drawn in the next frame
+    if gl_window.take_is_resized() {
+        gl_window.window().request_redraw();
+        return ControlFlow::Poll;
+    }
     let control_flow = if repaint_after.is_zero() {
         gl_window.window().request_redraw();
         ControlFlow::Poll

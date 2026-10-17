@@ -88,6 +88,8 @@ pub struct GlutinWindowContext {
     window_builder: WindowBuilder,
     is_visible: Cell<bool>,
     is_presented: Cell<bool>,
+    requested_size: Cell<PhysicalSize<u32>>,
+    is_resized: Cell<bool>,
 }
 
 impl GlutinWindowContext {
@@ -145,6 +147,8 @@ impl GlutinWindowContext {
             window_builder,
             is_visible: Cell::new(false),
             is_presented: Cell::new(false),
+            requested_size: Cell::new(PhysicalSize::default()),
+            is_resized: Cell::new(false),
         }
     }
 
@@ -158,6 +162,23 @@ impl GlutinWindowContext {
             physical_size.width.try_into().unwrap(),
             physical_size.height.try_into().unwrap(),
         );
+    }
+
+    pub fn set_size(&self, size: PhysicalSize<u32>) {
+        if self.requested_size.get() == size {
+            return;
+        }
+
+        self.requested_size.set(size);
+        self.is_resized.set(true);
+        self.resize(size);
+        self.window.set_inner_size(size);
+        self.window.set_max_inner_size(Some(size));
+    }
+
+    /// Returns whether the size has changed since the last call
+    pub fn take_is_resized(&self) -> bool {
+        self.is_resized.replace(false)
     }
 
     pub fn swap_buffers(&self) -> glutin::error::Result<()> {
@@ -212,6 +233,7 @@ impl GlutinWindowContext {
         drop(std::mem::replace(&mut self.gl_surface, gl_surface));
         self.window = window;
         self.is_presented.set(false);
+        self.requested_size.set(PhysicalSize::default());
     }
 
     pub fn get_focused_monitor(&self) -> Option<winit::monitor::MonitorHandle> {
