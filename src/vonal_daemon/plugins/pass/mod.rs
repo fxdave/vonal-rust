@@ -142,9 +142,9 @@ impl Pass {
         query: &mut String,
     ) {
         if rui.primary_action("Copy").activated {
-            gl_window.window.set_visible(false);
+            gl_window.set_visible(false);
             if let Err(e) = self.copy_password(pw) {
-                gl_window.window.set_visible(true);
+                gl_window.set_visible(true);
                 rui.label(&e.to_string());
             } else {
                 *query = "".into();
@@ -161,9 +161,9 @@ impl Pass {
         query: &mut String,
     ) {
         if rui.primary_action("Type").activated {
-            gl_window.window.set_visible(false);
+            gl_window.set_visible(false);
             if let Err(e) = self.type_password(pw) {
-                gl_window.window.set_visible(true);
+                gl_window.set_visible(true);
                 rui.label(&e.to_string());
             } else {
                 *query = "".into();

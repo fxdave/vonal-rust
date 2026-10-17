@@ -13,7 +13,7 @@ use egui_glow::glow::{self};
 use egui_glow::painter::Context;
 use windowing::GlutinWindowContext;
 use winit::event::{Event, StartCause, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopWindowTarget};
 use winit::platform::run_return::EventLoopExtRunReturn;
 
 mod app;
@@ -100,7 +100,7 @@ struct SocketError {
 
 fn start_gui(mut app: app::App, rx: mpsc::Receiver<UserEvent>) {
     let mut event_loop: EventLoop<UserEvent> = EventLoopBuilder::with_user_event().build();
-    let (gl_window, gl) = windowing::create_display(&event_loop);
+    let (mut gl_window, gl) = windowing::create_display(&event_loop);
     let gl = std::sync::Arc::new(gl);
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone(), None);
 
@@ -112,13 +112,14 @@ fn start_gui(mut app: app::App, rx: mpsc::Receiver<UserEvent>) {
         }
     });
 
-    event_loop.run_return(|event, _, control_flow| {
+    event_loop.run_return(|event, event_loop, control_flow| {
         handle_platform_event(
             event,
+            event_loop,
             control_flow,
             &mut app,
             &mut egui_glow,
-            &gl_window,
+            &mut gl_window,
             gl.clone(),
         )
     });
@@ -126,20 +127,27 @@ fn start_gui(mut app: app::App, rx: mpsc::Receiver<UserEvent>) {
 
 fn handle_platform_event(
     event: Event<UserEvent>,
+    event_loop: &EventLoopWindowTarget<UserEvent>,
     control_flow: &mut ControlFlow,
     app: &mut app::App,
     egui_glow: &mut egui_glow::EguiGlow,
-    gl_window: &GlutinWindowContext,
+    gl_window: &mut GlutinWindowContext,
     gl: Arc<Context>,
 ) {
+    gl_window.recreate_hidden_window(event_loop);
+
     match event {
         Event::RedrawRequested(_) => {
-            *control_flow = redraw(app, egui_glow, gl_window, gl);
+            *control_flow = if gl_window.is_visible() {
+                redraw(app, egui_glow, gl_window, gl)
+            } else {
+                ControlFlow::Wait
+            };
         }
-        Event::WindowEvent { event, .. } => {
+        Event::WindowEvent { window_id, event } if window_id == gl_window.window().id() => {
             match event {
                 WindowEvent::CloseRequested | WindowEvent::Destroyed => {
-                    gl_window.window().set_visible(false);
+                    gl_window.set_visible(false);
                 }
                 WindowEvent::Resized(ref physical_size) => {
                     gl_window.resize(*physical_size);
@@ -152,7 +160,7 @@ fn handle_platform_event(
                 _ => {}
             }
 
-            if gl_window.window().is_visible().unwrap_or(false) {
+            if gl_window.is_visible() {
                 let event_response = egui_glow.on_event(&event);
                 if event_response.repaint {
                     gl_window.window().request_redraw();
@@ -206,7 +214,7 @@ fn parse_cli(commands: Vec<Command>, gl_window: &GlutinWindowContext, app: &mut 
             Command::Show => show_window(gl_window, true),
             Command::Hide => hide_window(gl_window),
             Command::Toggle => {
-                let show = !gl_window.window().is_visible().unwrap_or(false);
+                let show = !gl_window.is_visible();
                 show_window(gl_window, show);
             }
             Command::SetQuery { query } => {
@@ -227,11 +235,11 @@ fn restart() {
 }
 
 fn hide_window(gl_window: &GlutinWindowContext) {
-    gl_window.window().set_visible(false);
+    gl_window.set_visible(false);
 }
 
 fn show_window(gl_window: &GlutinWindowContext, show: bool) {
-    gl_window.window().set_visible(show);
+    gl_window.set_visible(show);
     let monitor = gl_window
         .get_focused_monitor()
         .expect("pointer is not on the monitor");

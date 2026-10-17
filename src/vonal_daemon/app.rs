@@ -316,7 +316,7 @@ impl App {
     fn handle_escape(&mut self, ctx: &egui::Context, window: &GlutinWindowContext) {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             if self.query.is_empty() {
-                window.window().set_visible(false);
+                window.set_visible(false);
             }
             self.query = String::new();
         }
