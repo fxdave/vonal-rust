@@ -3,7 +3,7 @@
 Vonal is a modern alternative to `dmenu`, `rofi`, `albert` etc...
 Ideal for tiling window managers.
 
-Currently only X11 is supported. (If you need Wayland support, please tell me.)
+Both X11 and Wayland are supported.
 
 ## Installation & Usage
 
@@ -29,6 +29,12 @@ Build from source (Rust is required):
 
 *Optionally*: If you use **bspwm**, an example rule to keep Vonal floating:
 - `bspc rule -a vonal state=floating border=off`
+
+*Optionally*: On **Wayland** the compositor decides where the window goes, so you may want a floating rule there as well. The app id is `vonal`.
+- Hyprland: `windowrulev2 = float, class:^(vonal)$`
+- Sway: `for_window [app_id="vonal"] floating enable`
+
+To force X11 (XWayland) on a Wayland session, start the daemon with `WINIT_UNIX_BACKEND=x11`.
 
 # Plugins
 
