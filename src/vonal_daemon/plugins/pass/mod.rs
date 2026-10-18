@@ -6,7 +6,7 @@ use std::{
     error::Error,
     fmt::Display,
     io::{BufRead, BufReader, Write},
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
 };
 
 use super::{Plugin, PluginContext};
@@ -102,34 +102,36 @@ impl Pass {
         Ok(())
     }
 
-    fn run_bash(&self, command: &str, name: &str) -> Result<(), std::io::Error> {
-        self.create_command(command, name)
+    fn run_bash(&self, command: &str, name: &str) -> Result<(), Box<dyn Error>> {
+        let output = self.create_command(command, name).output()?;
+        check_output(&output)
+    }
+
+    fn type_password(&self, name: &str) -> Result<(), std::io::Error> {
+        self.create_command(&self.config_command_type_password, name)
             .stdout(Stdio::piped())
             .spawn()?;
         Ok(())
     }
 
-    fn type_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(&self.config_command_type_password, name)
-    }
-
-    fn generate_password(&self, name: &str) -> Result<(), std::io::Error> {
+    fn generate_password(&self, name: &str) -> Result<(), Box<dyn Error>> {
         self.run_bash(&self.config_command_generate_password, name)
     }
 
-    fn add_password_manually(&self, name: &str, password: &str) -> Result<(), std::io::Error> {
+    fn add_password_manually(&self, name: &str, password: &str) -> Result<(), Box<dyn Error>> {
         let mut child = self
             .create_command(&self.config_command_manual_add_password, name)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
         let child_stdin = child.stdin.as_mut().unwrap();
         child_stdin.write_all(password.as_bytes())?;
-        child.wait_with_output()?;
-        Ok(())
+        let output = child.wait_with_output()?;
+        check_output(&output)
     }
 
-    fn delete_password(&self, name: &str) -> Result<(), std::io::Error> {
+    fn delete_password(&self, name: &str) -> Result<(), Box<dyn Error>> {
         self.run_bash(&self.config_command_delete_password, name)
     }
 
@@ -188,7 +190,7 @@ impl Pass {
                 return Ok(());
             }
             self.generate_password(password_name)?;
-            self.add_message(query.to_owned(), "Password is added sucessfully!".into());
+            self.add_message(query.to_owned(), "Password is added successfully!".into());
         }
         Ok(())
     }
@@ -201,7 +203,7 @@ impl Pass {
     ) -> Result<(), Box<dyn Error>> {
         if rui.primary_action("delete").activated {
             self.delete_password(password_name)?;
-            self.add_message(query.to_owned(), "Password is added sucessfully!".into());
+            self.add_message(query.to_owned(), "Password is deleted successfully!".into());
         }
         Ok(())
     }
@@ -214,7 +216,7 @@ impl Pass {
         query: &str,
     ) -> Result<(), Box<dyn Error>> {
         let button_title = &format!(
-            "Add enty named \"{}\" with password: \"{}\"",
+            "Add entry named \"{}\" with password: \"{}\"",
             password_name, password
         );
         if rui.primary_action(button_title).activated {
@@ -223,7 +225,7 @@ impl Pass {
                 return Ok(());
             }
             self.add_password_manually(password_name, password)?;
-            self.add_message(query.to_owned(), "Password is added sucessfully!".into());
+            self.add_message(query.to_owned(), "Password is added successfully!".into());
         }
         Ok(())
     }
@@ -378,6 +380,20 @@ impl Plugin for Pass {
 
         Ok(builder)
     }
+}
+
+fn check_output(output: &Output) -> Result<(), Box<dyn Error>> {
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let message = if stderr.trim().is_empty() {
+        format!("Command failed with {}", output.status)
+    } else {
+        stderr.trim().to_string()
+    };
+    Err(Box::new(PassError(message)))
 }
 
 #[derive(Debug)]
