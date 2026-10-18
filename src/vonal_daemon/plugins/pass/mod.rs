@@ -7,6 +7,8 @@ use std::{
     fmt::Display,
     io::{BufRead, BufReader, Write},
     process::{Command, Output, Stdio},
+    thread,
+    time::Duration,
 };
 
 use super::{Plugin, PluginContext};
@@ -24,11 +26,13 @@ printf '%s\n' "${password_files[@]}"
 const DEFAULT_COPY_PASSWORD_COMMAND: &str = r#"pass show -c "$PASSWORD_NAME""#;
 const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show "$PASSWORD_NAME" \
 | { IFS= read -r pass; printf %s "$pass"; } \
-| xdotool type --clearmodifiers --file -
+| if [ -n "$WAYLAND_DISPLAY" ]; then wtype -; else xdotool type --clearmodifiers --file -; fi
 "#;
 const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate "$PASSWORD_NAME""#;
 const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e "$PASSWORD_NAME""#;
 const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f "$PASSWORD_NAME""#;
+/// Gives time for the window to hide and for the focus to return to the previous window
+const TYPE_PASSWORD_DELAY: Duration = Duration::from_millis(200);
 
 struct MessageState {
     message: String,
@@ -107,11 +111,21 @@ impl Pass {
         check_output(&output)
     }
 
-    fn type_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.create_command(&self.config_command_type_password, name)
-            .stdout(Stdio::piped())
-            .spawn()?;
-        Ok(())
+    fn type_password(&self, name: &str) {
+        let mut command = self.create_command(&self.config_command_type_password, name);
+        thread::spawn(move || {
+            thread::sleep(TYPE_PASSWORD_DELAY);
+            let result: Result<(), Box<dyn Error>> = command
+                .output()
+                .map_err(Into::into)
+                .and_then(|output| check_output(&output));
+            if let Err(error) = result {
+                Command::new("notify-send")
+                    .arg(error.to_string())
+                    .spawn()
+                    .ok();
+            }
+        });
     }
 
     fn generate_password(&self, name: &str) -> Result<(), Box<dyn Error>> {
@@ -163,13 +177,9 @@ impl Pass {
     ) {
         if rui.primary_action("Type").activated {
             gl_window.set_visible(false);
-            if let Err(e) = self.type_password(pw) {
-                gl_window.set_visible(true);
-                rui.label(&e.to_string());
-            } else {
-                *query = "".into();
-                ListState::reset(rui.ui.ctx(), 0);
-            }
+            self.type_password(pw);
+            *query = "".into();
+            ListState::reset(rui.ui.ctx(), 0);
         }
     }
 
