@@ -28,6 +28,11 @@ const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show "$PASSWORD_NAME" \
 | { IFS= read -r pass; printf %s "$pass"; } \
 | if [ -n "$WAYLAND_DISPLAY" ]; then wtype -; else xdotool type --clearmodifiers --file -; fi
 "#;
+const DEFAULT_COPY_OTP_COMMAND: &str = r#"pass otp -c "$PASSWORD_NAME""#;
+const DEFAULT_TYPE_OTP_COMMAND: &str = r#"pass otp "$PASSWORD_NAME" \
+| tr -d '\n' \
+| if [ -n "$WAYLAND_DISPLAY" ]; then wtype -; else xdotool type --clearmodifiers --file -; fi
+"#;
 const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate "$PASSWORD_NAME""#;
 const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e "$PASSWORD_NAME""#;
 const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f "$PASSWORD_NAME""#;
@@ -45,6 +50,8 @@ pub struct Pass {
     config_command_list_passwords: String,
     config_command_copy_password: String,
     config_command_type_password: String,
+    config_command_copy_otp: String,
+    config_command_type_otp: String,
     config_command_generate_password: String,
     config_command_manual_add_password: String,
     config_command_delete_password: String,
@@ -91,17 +98,23 @@ impl Pass {
         process
     }
 
-    fn copy_password(&self, pw: &str) -> Result<(), std::io::Error> {
-        let stdout = self
-            .create_command(&self.config_command_copy_password, pw)
+    fn copy_secret(&self, command: &str, name: &str) -> Result<(), Box<dyn Error>> {
+        let mut child = self
+            .create_command(command, name)
             .stdout(Stdio::piped())
-            .spawn()?
-            .stdout;
-        if let Some(stdout) = stdout {
+            .spawn()?;
+        if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
             if let Some(result) = reader.lines().next() {
                 Command::new("notify-send").arg(result?).spawn()?;
+                return Ok(());
             }
+        }
+
+        // nothing was printed, so it's probably failed
+        let status = child.wait()?;
+        if !status.success() {
+            return Err(Box::new(PassError(format!("Command failed with {status}"))));
         }
         Ok(())
     }
@@ -111,8 +124,8 @@ impl Pass {
         check_output(&output)
     }
 
-    fn type_password(&self, name: &str) {
-        let mut command = self.create_command(&self.config_command_type_password, name);
+    fn type_secret(&self, command: &str, name: &str) {
+        let mut command = self.create_command(command, name);
         thread::spawn(move || {
             thread::sleep(TYPE_PASSWORD_DELAY);
             let result: Result<(), Box<dyn Error>> = command
@@ -150,15 +163,16 @@ impl Pass {
     }
 
     fn render_copy_button(
-        &mut self,
+        &self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
+        command: &str,
         pw: &str,
         query: &mut String,
     ) {
         if rui.primary_action("Copy").activated {
             gl_window.set_visible(false);
-            if let Err(e) = self.copy_password(pw) {
+            if let Err(e) = self.copy_secret(command, pw) {
                 gl_window.set_visible(true);
                 rui.label(&e.to_string());
             } else {
@@ -169,15 +183,16 @@ impl Pass {
     }
 
     fn render_type_button(
-        &mut self,
+        &self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
+        command: &str,
         pw: &str,
         query: &mut String,
     ) {
         if rui.primary_action("Type").activated {
             gl_window.set_visible(false);
-            self.type_password(pw);
+            self.type_secret(command, pw);
             *query = "".into();
             ListState::reset(rui.ui.ctx(), 0);
         }
@@ -309,9 +324,15 @@ impl Plugin for Pass {
         }
 
         let is_delete = keyword == "delete" || keyword.starts_with("delete ");
+        let is_otp = keyword == "otp" || keyword.starts_with("otp ");
         let password_name = if is_delete {
             keyword
                 .trim_start_matches("delete")
+                .trim_start_matches(' ')
+                .to_string()
+        } else if is_otp {
+            keyword
+                .trim_start_matches("otp")
                 .trim_start_matches(' ')
                 .to_string()
         } else {
@@ -332,6 +353,14 @@ impl Plugin for Pass {
                                     ui.label(" ");
                                 });
                             }
+                            if is_otp {
+                                list_ui.passive_row(|ui| {
+                                    ui.label(" ");
+                                    ui.label("Examples:");
+                                    ui.label("otp github");
+                                    ui.label(" ");
+                                });
+                            }
                             for pw in passwords {
                                 list_ui.row(|rui| {
                                     rui.label(&pw);
@@ -339,10 +368,38 @@ impl Plugin for Pass {
                                         ctx.verify_result(
                                             self.render_delete_button(rui, &pw, ctx.query),
                                         );
-                                    } else {
-                                        self.render_type_button(rui, ctx.gl_window, &pw, ctx.query);
+                                    } else if is_otp {
+                                        self.render_type_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_type_otp,
+                                            &pw,
+                                            ctx.query,
+                                        );
                                         rui.label("/");
-                                        self.render_copy_button(rui, ctx.gl_window, &pw, ctx.query);
+                                        self.render_copy_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_copy_otp,
+                                            &pw,
+                                            ctx.query,
+                                        );
+                                    } else {
+                                        self.render_type_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_type_password,
+                                            &pw,
+                                            ctx.query,
+                                        );
+                                        rui.label("/");
+                                        self.render_copy_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_copy_password,
+                                            &pw,
+                                            ctx.query,
+                                        );
                                     }
                                 });
                             }
@@ -372,6 +429,12 @@ impl Plugin for Pass {
             self.config_command_type_password = builder.get_or_create(
                 "command_type_password",
                 DEFAULT_TYPE_PASSWORD_COMMAND.trim_start().into(),
+            )?;
+            self.config_command_copy_otp =
+                builder.get_or_create("command_copy_otp", DEFAULT_COPY_OTP_COMMAND.into())?;
+            self.config_command_type_otp = builder.get_or_create(
+                "command_type_otp",
+                DEFAULT_TYPE_OTP_COMMAND.trim_start().into(),
             )?;
             self.config_command_generate_password = builder.get_or_create(
                 "command_generate_password",
