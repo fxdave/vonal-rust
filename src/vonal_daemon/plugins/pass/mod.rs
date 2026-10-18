@@ -21,14 +21,14 @@ password_files=( "${password_files[@]#"$prefix"/}" )
 password_files=( "${password_files[@]%.gpg}" )
 printf '%s\n' "${password_files[@]}"
 "#;
-const DEFAULT_COPY_PASSWORD_COMMAND: &str = r#"pass show -c {name}"#;
-const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show {name} \
+const DEFAULT_COPY_PASSWORD_COMMAND: &str = r#"pass show -c "$PASSWORD_NAME""#;
+const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show "$PASSWORD_NAME" \
 | { IFS= read -r pass; printf %s "$pass"; } \
 | xdotool type --clearmodifiers --file -
 "#;
-const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate {name}"#;
-const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e {name}"#;
-const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f {name}"#;
+const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate "$PASSWORD_NAME""#;
+const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e "$PASSWORD_NAME""#;
+const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f "$PASSWORD_NAME""#;
 
 struct MessageState {
     message: String,
@@ -76,11 +76,21 @@ impl Pass {
         Ok(passwords)
     }
 
-    fn copy_password(&self, pw: &str) -> Result<(), std::io::Error> {
-        let stdout = Command::new("sh")
-            .stdout(Stdio::piped())
+    /// The name is passed as an environment variable, so it can't inject shell code.
+    /// Old configs with `{name}` are still supported.
+    fn create_command(&self, command: &str, name: &str) -> Command {
+        let mut process = Command::new("bash");
+        process
             .arg("-c")
-            .arg(self.config_command_copy_password.replace("{name}", pw))
+            .arg(command.replace("{name}", r#""$PASSWORD_NAME""#))
+            .env("PASSWORD_NAME", name);
+        process
+    }
+
+    fn copy_password(&self, pw: &str) -> Result<(), std::io::Error> {
+        let stdout = self
+            .create_command(&self.config_command_copy_password, pw)
+            .stdout(Stdio::piped())
             .spawn()?
             .stdout;
         if let Some(stdout) = stdout {
@@ -92,37 +102,26 @@ impl Pass {
         Ok(())
     }
 
-    fn run_bash(&self, command: &str) -> Result<(), std::io::Error> {
-        Command::new("bash")
+    fn run_bash(&self, command: &str, name: &str) -> Result<(), std::io::Error> {
+        self.create_command(command, name)
             .stdout(Stdio::piped())
-            .arg("-c")
-            .arg(command)
             .spawn()?;
         Ok(())
     }
 
     fn type_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(&self.config_command_type_password.replace("{name}", name))
+        self.run_bash(&self.config_command_type_password, name)
     }
 
     fn generate_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(
-            &self
-                .config_command_generate_password
-                .replace("{name}", name),
-        )
+        self.run_bash(&self.config_command_generate_password, name)
     }
 
     fn add_password_manually(&self, name: &str, password: &str) -> Result<(), std::io::Error> {
-        let mut child = Command::new("bash")
+        let mut child = self
+            .create_command(&self.config_command_manual_add_password, name)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .arg("-c")
-            .arg(
-                &self
-                    .config_command_manual_add_password
-                    .replace("{name}", name),
-            )
             .spawn()?;
         let child_stdin = child.stdin.as_mut().unwrap();
         child_stdin.write_all(password.as_bytes())?;
@@ -131,7 +130,7 @@ impl Pass {
     }
 
     fn delete_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(&self.config_command_delete_password.replace("{name}", name))
+        self.run_bash(&self.config_command_delete_password, name)
     }
 
     fn render_copy_button(
