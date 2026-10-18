@@ -68,6 +68,8 @@ A configurable password manager plugin. It works with every password managers, h
     - `pass add email` generates a password named "email"
     - `pass add email 123456` adds new password named "email" with password "123456"
     - `pass delete em` search for every password name containing `em` with offering a delete option for each 
+    - `pass otp gi` search for every password name containing `gi` with offering to type or copy its OTP code (requires [pass-otp](https://github.com/tadfisher/pass-otp))
+  - typing uses `xdotool` on X11 and `wtype` on Wayland
 
 Warning: On update you have to manually enable new plugins.
 

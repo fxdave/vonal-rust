@@ -6,7 +6,9 @@ use std::{
     error::Error,
     fmt::Display,
     io::{BufRead, BufReader, Write},
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
+    thread,
+    time::Duration,
 };
 
 use super::{Plugin, PluginContext};
@@ -21,14 +23,21 @@ password_files=( "${password_files[@]#"$prefix"/}" )
 password_files=( "${password_files[@]%.gpg}" )
 printf '%s\n' "${password_files[@]}"
 "#;
-const DEFAULT_COPY_PASSWORD_COMMAND: &str = r#"pass show -c {name}"#;
-const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show {name} \
+const DEFAULT_COPY_PASSWORD_COMMAND: &str = r#"pass show -c "$PASSWORD_NAME""#;
+const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show "$PASSWORD_NAME" \
 | { IFS= read -r pass; printf %s "$pass"; } \
-| xdotool type --clearmodifiers --file -
+| if [ -n "$WAYLAND_DISPLAY" ]; then wtype -; else xdotool type --clearmodifiers --file -; fi
 "#;
-const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate {name}"#;
-const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e {name}"#;
-const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f {name}"#;
+const DEFAULT_COPY_OTP_COMMAND: &str = r#"pass otp -c "$PASSWORD_NAME""#;
+const DEFAULT_TYPE_OTP_COMMAND: &str = r#"pass otp "$PASSWORD_NAME" \
+| tr -d '\n' \
+| if [ -n "$WAYLAND_DISPLAY" ]; then wtype -; else xdotool type --clearmodifiers --file -; fi
+"#;
+const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate "$PASSWORD_NAME""#;
+const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e "$PASSWORD_NAME""#;
+const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f "$PASSWORD_NAME""#;
+/// Gives time for the window to hide and for the focus to return to the previous window
+const TYPE_PASSWORD_DELAY: Duration = Duration::from_millis(200);
 
 struct MessageState {
     message: String,
@@ -41,6 +50,8 @@ pub struct Pass {
     config_command_list_passwords: String,
     config_command_copy_password: String,
     config_command_type_password: String,
+    config_command_copy_otp: String,
+    config_command_type_otp: String,
     config_command_generate_password: String,
     config_command_manual_add_password: String,
     config_command_delete_password: String,
@@ -76,74 +87,92 @@ impl Pass {
         Ok(passwords)
     }
 
-    fn copy_password(&self, pw: &str) -> Result<(), std::io::Error> {
-        let stdout = Command::new("sh")
-            .stdout(Stdio::piped())
+    /// The name is passed as an environment variable, so it can't inject shell code.
+    /// Old configs with `{name}` are still supported.
+    fn create_command(&self, command: &str, name: &str) -> Command {
+        let mut process = Command::new("bash");
+        process
             .arg("-c")
-            .arg(self.config_command_copy_password.replace("{name}", pw))
-            .spawn()?
-            .stdout;
-        if let Some(stdout) = stdout {
+            .arg(command.replace("{name}", r#""$PASSWORD_NAME""#))
+            .env("PASSWORD_NAME", name);
+        process
+    }
+
+    fn copy_secret(&self, command: &str, name: &str) -> Result<(), Box<dyn Error>> {
+        let mut child = self
+            .create_command(command, name)
+            .stdout(Stdio::piped())
+            .spawn()?;
+        if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
             if let Some(result) = reader.lines().next() {
                 Command::new("notify-send").arg(result?).spawn()?;
+                return Ok(());
             }
+        }
+
+        // nothing was printed, so it's probably failed
+        let status = child.wait()?;
+        if !status.success() {
+            return Err(Box::new(PassError(format!("Command failed with {status}"))));
         }
         Ok(())
     }
 
-    fn run_bash(&self, command: &str) -> Result<(), std::io::Error> {
-        Command::new("bash")
-            .stdout(Stdio::piped())
-            .arg("-c")
-            .arg(command)
-            .spawn()?;
-        Ok(())
+    fn run_bash(&self, command: &str, name: &str) -> Result<(), Box<dyn Error>> {
+        let output = self.create_command(command, name).output()?;
+        check_output(&output)
     }
 
-    fn type_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(&self.config_command_type_password.replace("{name}", name))
+    fn type_secret(&self, command: &str, name: &str) {
+        let mut command = self.create_command(command, name);
+        thread::spawn(move || {
+            thread::sleep(TYPE_PASSWORD_DELAY);
+            let result: Result<(), Box<dyn Error>> = command
+                .output()
+                .map_err(Into::into)
+                .and_then(|output| check_output(&output));
+            if let Err(error) = result {
+                Command::new("notify-send")
+                    .arg(error.to_string())
+                    .spawn()
+                    .ok();
+            }
+        });
     }
 
-    fn generate_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(
-            &self
-                .config_command_generate_password
-                .replace("{name}", name),
-        )
+    fn generate_password(&self, name: &str) -> Result<(), Box<dyn Error>> {
+        self.run_bash(&self.config_command_generate_password, name)
     }
 
-    fn add_password_manually(&self, name: &str, password: &str) -> Result<(), std::io::Error> {
-        let mut child = Command::new("bash")
+    fn add_password_manually(&self, name: &str, password: &str) -> Result<(), Box<dyn Error>> {
+        let mut child = self
+            .create_command(&self.config_command_manual_add_password, name)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .arg("-c")
-            .arg(
-                &self
-                    .config_command_manual_add_password
-                    .replace("{name}", name),
-            )
+            .stderr(Stdio::piped())
             .spawn()?;
         let child_stdin = child.stdin.as_mut().unwrap();
         child_stdin.write_all(password.as_bytes())?;
-        child.wait_with_output()?;
-        Ok(())
+        let output = child.wait_with_output()?;
+        check_output(&output)
     }
 
-    fn delete_password(&self, name: &str) -> Result<(), std::io::Error> {
-        self.run_bash(&self.config_command_delete_password.replace("{name}", name))
+    fn delete_password(&self, name: &str) -> Result<(), Box<dyn Error>> {
+        self.run_bash(&self.config_command_delete_password, name)
     }
 
     fn render_copy_button(
-        &mut self,
+        &self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
+        command: &str,
         pw: &str,
         query: &mut String,
     ) {
         if rui.primary_action("Copy").activated {
             gl_window.set_visible(false);
-            if let Err(e) = self.copy_password(pw) {
+            if let Err(e) = self.copy_secret(command, pw) {
                 gl_window.set_visible(true);
                 rui.label(&e.to_string());
             } else {
@@ -154,21 +183,18 @@ impl Pass {
     }
 
     fn render_type_button(
-        &mut self,
+        &self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
+        command: &str,
         pw: &str,
         query: &mut String,
     ) {
         if rui.primary_action("Type").activated {
             gl_window.set_visible(false);
-            if let Err(e) = self.type_password(pw) {
-                gl_window.set_visible(true);
-                rui.label(&e.to_string());
-            } else {
-                *query = "".into();
-                ListState::reset(rui.ui.ctx(), 0);
-            }
+            self.type_secret(command, pw);
+            *query = "".into();
+            ListState::reset(rui.ui.ctx(), 0);
         }
     }
 
@@ -189,7 +215,7 @@ impl Pass {
                 return Ok(());
             }
             self.generate_password(password_name)?;
-            self.add_message(query.to_owned(), "Password is added sucessfully!".into());
+            self.add_message(query.to_owned(), "Password is added successfully!".into());
         }
         Ok(())
     }
@@ -202,7 +228,7 @@ impl Pass {
     ) -> Result<(), Box<dyn Error>> {
         if rui.primary_action("delete").activated {
             self.delete_password(password_name)?;
-            self.add_message(query.to_owned(), "Password is added sucessfully!".into());
+            self.add_message(query.to_owned(), "Password is deleted successfully!".into());
         }
         Ok(())
     }
@@ -215,7 +241,7 @@ impl Pass {
         query: &str,
     ) -> Result<(), Box<dyn Error>> {
         let button_title = &format!(
-            "Add enty named \"{}\" with password: \"{}\"",
+            "Add entry named \"{}\" with password: \"{}\"",
             password_name, password
         );
         if rui.primary_action(button_title).activated {
@@ -224,7 +250,7 @@ impl Pass {
                 return Ok(());
             }
             self.add_password_manually(password_name, password)?;
-            self.add_message(query.to_owned(), "Password is added sucessfully!".into());
+            self.add_message(query.to_owned(), "Password is added successfully!".into());
         }
         Ok(())
     }
@@ -298,9 +324,15 @@ impl Plugin for Pass {
         }
 
         let is_delete = keyword == "delete" || keyword.starts_with("delete ");
+        let is_otp = keyword == "otp" || keyword.starts_with("otp ");
         let password_name = if is_delete {
             keyword
                 .trim_start_matches("delete")
+                .trim_start_matches(' ')
+                .to_string()
+        } else if is_otp {
+            keyword
+                .trim_start_matches("otp")
                 .trim_start_matches(' ')
                 .to_string()
         } else {
@@ -321,6 +353,14 @@ impl Plugin for Pass {
                                     ui.label(" ");
                                 });
                             }
+                            if is_otp {
+                                list_ui.passive_row(|ui| {
+                                    ui.label(" ");
+                                    ui.label("Examples:");
+                                    ui.label("otp github");
+                                    ui.label(" ");
+                                });
+                            }
                             for pw in passwords {
                                 list_ui.row(|rui| {
                                     rui.label(&pw);
@@ -328,10 +368,38 @@ impl Plugin for Pass {
                                         ctx.verify_result(
                                             self.render_delete_button(rui, &pw, ctx.query),
                                         );
-                                    } else {
-                                        self.render_type_button(rui, ctx.gl_window, &pw, ctx.query);
+                                    } else if is_otp {
+                                        self.render_type_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_type_otp,
+                                            &pw,
+                                            ctx.query,
+                                        );
                                         rui.label("/");
-                                        self.render_copy_button(rui, ctx.gl_window, &pw, ctx.query);
+                                        self.render_copy_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_copy_otp,
+                                            &pw,
+                                            ctx.query,
+                                        );
+                                    } else {
+                                        self.render_type_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_type_password,
+                                            &pw,
+                                            ctx.query,
+                                        );
+                                        rui.label("/");
+                                        self.render_copy_button(
+                                            rui,
+                                            ctx.gl_window,
+                                            &self.config_command_copy_password,
+                                            &pw,
+                                            ctx.query,
+                                        );
                                     }
                                 });
                             }
@@ -362,6 +430,12 @@ impl Plugin for Pass {
                 "command_type_password",
                 DEFAULT_TYPE_PASSWORD_COMMAND.trim_start().into(),
             )?;
+            self.config_command_copy_otp =
+                builder.get_or_create("command_copy_otp", DEFAULT_COPY_OTP_COMMAND.into())?;
+            self.config_command_type_otp = builder.get_or_create(
+                "command_type_otp",
+                DEFAULT_TYPE_OTP_COMMAND.trim_start().into(),
+            )?;
             self.config_command_generate_password = builder.get_or_create(
                 "command_generate_password",
                 DEFAULT_GENERATE_PASSWORD_COMMAND.trim_start().into(),
@@ -379,6 +453,20 @@ impl Plugin for Pass {
 
         Ok(builder)
     }
+}
+
+fn check_output(output: &Output) -> Result<(), Box<dyn Error>> {
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let message = if stderr.trim().is_empty() {
+        format!("Command failed with {}", output.status)
+    } else {
+        stderr.trim().to_string()
+    };
+    Err(Box::new(PassError(message)))
 }
 
 #[derive(Debug)]
