@@ -309,10 +309,16 @@ fn set_swap_interval(
     gl_context: &glutin::context::PossiblyCurrentContext,
     gl_surface: &glutin::surface::Surface<glutin::surface::WindowSurface>,
 ) {
-    gl_surface
-        .set_swap_interval(
-            gl_context,
-            glutin::surface::SwapInterval::Wait(std::num::NonZeroU32::new(1).unwrap()),
-        )
-        .unwrap();
+    // Deliberately not `Wait(1)`. With vsync, `swap_buffers` blocks until the
+    // compositor sends a frame callback, and a surface the compositor is not
+    // showing -- because it sits on another workspace, for instance -- never
+    // gets one. Rendering, window recreation and `vonalc` command dispatch all
+    // share this single thread, so that block froze the entire daemon: every
+    // later `vonalc` command was accepted and then never acted on. The frame
+    // rate is bounded in `redraw` instead.
+    if let Err(error) =
+        gl_surface.set_swap_interval(gl_context, glutin::surface::SwapInterval::DontWait)
+    {
+        eprintln!("Failed to set the swap interval: {error}");
+    }
 }

@@ -24,20 +24,20 @@ password_files=( "${password_files[@]%.gpg}" )
 printf '%s\n' "${password_files[@]}"
 "#;
 const DEFAULT_COPY_PASSWORD_COMMAND: &str = r#"pass show -c "$PASSWORD_NAME""#;
-const DEFAULT_TYPE_PASSWORD_COMMAND: &str = r#"pass show "$PASSWORD_NAME" \
-| { IFS= read -r pass; printf %s "$pass"; } \
-| if [ -n "$WAYLAND_DISPLAY" ]; then wtype -; else xdotool type --clearmodifiers --file -; fi
-"#;
+const DEFAULT_SHOW_PASSWORD_COMMAND: &str = r#"pass show "$PASSWORD_NAME""#;
 const DEFAULT_COPY_OTP_COMMAND: &str = r#"pass otp -c "$PASSWORD_NAME""#;
-const DEFAULT_TYPE_OTP_COMMAND: &str = r#"pass otp "$PASSWORD_NAME" \
-| tr -d '\n' \
-| if [ -n "$WAYLAND_DISPLAY" ]; then wtype -; else xdotool type --clearmodifiers --file -; fi
-"#;
+const DEFAULT_SHOW_OTP_COMMAND: &str = r#"pass otp "$PASSWORD_NAME""#;
 const DEFAULT_GENERATE_PASSWORD_COMMAND: &str = r#"pass generate "$PASSWORD_NAME""#;
 const DEFAULT_MANUAL_ADD_PASSWORD_COMMAND: &str = r#"pass insert -e "$PASSWORD_NAME""#;
 const DEFAULT_DELETE_PASSWORD_COMMAND: &str = r#"pass delete -f "$PASSWORD_NAME""#;
 /// Gives time for the window to hide and for the focus to return to the previous window
 const TYPE_PASSWORD_DELAY: Duration = Duration::from_millis(200);
+
+#[derive(Clone, Copy)]
+enum Secret {
+    Password,
+    Otp,
+}
 
 struct MessageState {
     message: String,
@@ -49,9 +49,9 @@ pub struct Pass {
     message: Option<MessageState>,
     config_command_list_passwords: String,
     config_command_copy_password: String,
-    config_command_type_password: String,
+    config_command_show_password: String,
     config_command_copy_otp: String,
-    config_command_type_otp: String,
+    config_command_show_otp: String,
     config_command_generate_password: String,
     config_command_manual_add_password: String,
     config_command_delete_password: String,
@@ -98,10 +98,25 @@ impl Pass {
         process
     }
 
-    fn copy_secret(&self, command: &str, name: &str) -> Result<(), Box<dyn Error>> {
+    fn copy_command(&self, secret: Secret) -> &str {
+        match secret {
+            Secret::Password => &self.config_command_copy_password,
+            Secret::Otp => &self.config_command_copy_otp,
+        }
+    }
+
+    fn show_command(&self, secret: Secret) -> &str {
+        match secret {
+            Secret::Password => &self.config_command_show_password,
+            Secret::Otp => &self.config_command_show_otp,
+        }
+    }
+
+    fn copy_secret(&self, secret: Secret, name: &str) -> Result<(), Box<dyn Error>> {
         let mut child = self
-            .create_command(command, name)
+            .create_command(self.copy_command(secret), name)
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
         if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
@@ -112,11 +127,7 @@ impl Pass {
         }
 
         // nothing was printed, so it's probably failed
-        let status = child.wait()?;
-        if !status.success() {
-            return Err(Box::new(PassError(format!("Command failed with {status}"))));
-        }
-        Ok(())
+        check_output(&child.wait_with_output()?)
     }
 
     fn run_bash(&self, command: &str, name: &str) -> Result<(), Box<dyn Error>> {
@@ -124,15 +135,10 @@ impl Pass {
         check_output(&output)
     }
 
-    fn type_secret(&self, command: &str, name: &str) {
-        let mut command = self.create_command(command, name);
+    fn type_secret(&self, secret: Secret, name: &str, is_wayland: bool) {
+        let mut command = self.create_command(self.show_command(secret), name);
         thread::spawn(move || {
-            thread::sleep(TYPE_PASSWORD_DELAY);
-            let result: Result<(), Box<dyn Error>> = command
-                .output()
-                .map_err(Into::into)
-                .and_then(|output| check_output(&output));
-            if let Err(error) = result {
+            if let Err(error) = type_first_line(&mut command, is_wayland) {
                 Command::new("notify-send")
                     .arg(error.to_string())
                     .spawn()
@@ -163,18 +169,18 @@ impl Pass {
     }
 
     fn render_copy_button(
-        &self,
+        &mut self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
-        command: &str,
+        secret: Secret,
         pw: &str,
         query: &mut String,
     ) {
         if rui.primary_action("Copy").activated {
             gl_window.set_visible(false);
-            if let Err(e) = self.copy_secret(command, pw) {
+            if let Err(e) = self.copy_secret(secret, pw) {
                 gl_window.set_visible(true);
-                rui.label(&e.to_string());
+                self.add_message(query.clone(), e.to_string());
             } else {
                 *query = "".into();
                 ListState::reset(rui.ui.ctx(), 0);
@@ -186,13 +192,13 @@ impl Pass {
         &self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
-        command: &str,
+        secret: Secret,
         pw: &str,
         query: &mut String,
     ) {
         if rui.primary_action("Type").activated {
             gl_window.set_visible(false);
-            self.type_secret(command, pw);
+            self.type_secret(secret, pw, gl_window.is_wayland());
             *query = "".into();
             ListState::reset(rui.ui.ctx(), 0);
         }
@@ -368,27 +374,16 @@ impl Plugin for Pass {
                                         ctx.verify_result(
                                             self.render_delete_button(rui, &pw, ctx.query),
                                         );
-                                    } else if is_otp {
-                                        self.render_type_button(
-                                            rui,
-                                            ctx.gl_window,
-                                            &self.config_command_type_otp,
-                                            &pw,
-                                            ctx.query,
-                                        );
-                                        rui.label("/");
-                                        self.render_copy_button(
-                                            rui,
-                                            ctx.gl_window,
-                                            &self.config_command_copy_otp,
-                                            &pw,
-                                            ctx.query,
-                                        );
                                     } else {
+                                        let secret = if is_otp {
+                                            Secret::Otp
+                                        } else {
+                                            Secret::Password
+                                        };
                                         self.render_type_button(
                                             rui,
                                             ctx.gl_window,
-                                            &self.config_command_type_password,
+                                            secret,
                                             &pw,
                                             ctx.query,
                                         );
@@ -396,7 +391,7 @@ impl Plugin for Pass {
                                         self.render_copy_button(
                                             rui,
                                             ctx.gl_window,
-                                            &self.config_command_copy_password,
+                                            secret,
                                             &pw,
                                             ctx.query,
                                         );
@@ -426,16 +421,14 @@ impl Plugin for Pass {
                 "command_copy_password",
                 DEFAULT_COPY_PASSWORD_COMMAND.into(),
             )?;
-            self.config_command_type_password = builder.get_or_create(
-                "command_type_password",
-                DEFAULT_TYPE_PASSWORD_COMMAND.trim_start().into(),
+            self.config_command_show_password = builder.get_or_create(
+                "command_show_password",
+                DEFAULT_SHOW_PASSWORD_COMMAND.into(),
             )?;
             self.config_command_copy_otp =
                 builder.get_or_create("command_copy_otp", DEFAULT_COPY_OTP_COMMAND.into())?;
-            self.config_command_type_otp = builder.get_or_create(
-                "command_type_otp",
-                DEFAULT_TYPE_OTP_COMMAND.trim_start().into(),
-            )?;
+            self.config_command_show_otp =
+                builder.get_or_create("command_show_otp", DEFAULT_SHOW_OTP_COMMAND.into())?;
             self.config_command_generate_password = builder.get_or_create(
                 "command_generate_password",
                 DEFAULT_GENERATE_PASSWORD_COMMAND.trim_start().into(),
@@ -453,6 +446,32 @@ impl Plugin for Pass {
 
         Ok(builder)
     }
+}
+
+/// Types the first line printed by `show`, like `pass show -c` copies only the first line.
+/// The typing tool depends on the display server, so the config doesn't have to.
+fn type_first_line(show: &mut Command, is_wayland: bool) -> Result<(), Box<dyn Error>> {
+    let output = show.output()?;
+    check_output(&output)?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let secret = stdout.lines().next().unwrap_or_default();
+
+    let (program, args): (&str, &[&str]) = if is_wayland {
+        ("wtype", &["-"])
+    } else {
+        ("xdotool", &["type", "--clearmodifiers", "--file", "-"])
+    };
+    thread::sleep(TYPE_PASSWORD_DELAY);
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| PassError(format!("Failed to run {program}: {e}")))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(secret.as_bytes())?;
+    }
+    check_output(&child.wait_with_output()?)
 }
 
 fn check_output(output: &Output) -> Result<(), Box<dyn Error>> {

@@ -1,7 +1,7 @@
 use std::error::Error;
-use std::io::{BufRead, BufReader};
+use std::io::Read;
 use std::sync::Arc;
-use std::{fs, os::unix::net::UnixListener, path::Path, sync::mpsc, time::Instant};
+use std::{fs, os::unix::net::UnixListener, sync::mpsc, time::Duration, time::Instant};
 use std::{os::unix::net::UnixStream, thread};
 
 use crate::config::ConfigError;
@@ -24,6 +24,10 @@ mod plugins;
 mod theme;
 mod utils;
 mod windowing;
+
+/// Upper bound on the repaint rate (~60 fps), applied because the swap
+/// interval is `DontWait` and no longer paces the loop itself.
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
 fn main() {
     let mut app = app::App::new();
@@ -53,38 +57,56 @@ fn main() {
 }
 
 fn start_socket(tx: &mpsc::Sender<UserEvent>) -> Result<(), Box<dyn Error>> {
-    let socket = Path::new(common::SOCKET_PATH);
+    let socket = common::socket_path();
 
-    if UnixStream::connect(socket).is_ok() {
+    if UnixStream::connect(&socket).is_ok() {
         return Err(Box::new(SocketError {
-            message: "One daemon is already listening".into(),
+            message: format!("One daemon is already listening on {}", socket.display()),
         }));
     }
 
     // Delete old socket if necessary
     if socket.exists() {
-        fs::remove_file(socket)?;
+        fs::remove_file(&socket)?;
     }
 
     // Bind to socket
-    let stream = UnixListener::bind(socket).or(Err(SocketError {
-        message: "Failed to bind socket.".into(),
-    }))?;
+    let stream = UnixListener::bind(&socket).map_err(|error| SocketError {
+        message: format!("Failed to bind socket {}: {error}", socket.display()),
+    })?;
 
-    println!("Server started, waiting for clients");
+    eprintln!("Server started on {}, waiting for clients", socket.display());
 
     // Iterate over clients, blocks if no client available
     for client in stream.incoming() {
-        let stream = client?;
-        let mut reader = BufReader::new(stream);
-        if let Err(error) = reader.fill_buf() {
-            println!("{:?}", error);
+        // A single misbehaving client must never take the daemon down, so
+        // per-client failures are logged and skipped instead of returned.
+        let mut stream = match client {
+            Ok(stream) => stream,
+            Err(error) => {
+                eprintln!("Failed to accept a client: {error}");
+                continue;
+            }
+        };
+
+        // Without a timeout, a client that connects but never writes blocks
+        // this loop forever, silently freezing every command that follows.
+        if let Err(error) = stream.set_read_timeout(Some(Duration::from_secs(2))) {
+            eprintln!("Failed to set a read timeout: {error}");
         }
-        let result = bincode::deserialize(reader.buffer());
-        match result {
+
+        // Read the whole message. A single read can return a partial one,
+        // which then fails to decode.
+        let mut buffer = Vec::new();
+        if let Err(error) = stream.read_to_end(&mut buffer) {
+            eprintln!("Failed to read from a client: {error}");
+            continue;
+        }
+
+        match bincode::deserialize(&buffer) {
             Ok(commands) => tx.send(UserEvent::CliCommands(commands))?,
             Err(error) => {
-                println!("{error:?}")
+                eprintln!("Failed to decode a command ({} bytes): {error}", buffer.len());
             }
         }
     }
@@ -240,10 +262,11 @@ fn hide_window(gl_window: &GlutinWindowContext) {
 
 fn show_window(gl_window: &GlutinWindowContext, show: bool) {
     gl_window.set_visible(show);
-    let monitor = gl_window
-        .get_focused_monitor()
-        .expect("pointer is not on the monitor");
-    gl_window.window().set_outer_position(monitor.position());
+    // This runs on the event loop thread, so a panic here takes the whole
+    // launcher down. A monitor we cannot identify is not worth that.
+    if let Some(monitor) = gl_window.get_focused_monitor() {
+        gl_window.window().set_outer_position(monitor.position());
+    }
 }
 
 fn redraw(
@@ -265,8 +288,14 @@ fn redraw(
         return ControlFlow::Poll;
     }
     let control_flow = if repaint_after.is_zero() {
+        // `swap_buffers` no longer blocks on vsync, so continuous repaints have
+        // to be paced here; otherwise this loop spins as fast as the GPU allows
+        // and starves `vonalc` command dispatch all over again.
         gl_window.window().request_redraw();
-        ControlFlow::Poll
+        match Instant::now().checked_add(FRAME_INTERVAL) {
+            Some(instant) => ControlFlow::WaitUntil(instant),
+            None => ControlFlow::Poll,
+        }
     } else if let Some(instant) = Instant::now().checked_add(repaint_after) {
         ControlFlow::WaitUntil(instant)
     } else {
@@ -282,7 +311,9 @@ fn redraw(
     // draw things behind egui here
     egui_glow.paint(gl_window.window());
     // draw things on top of egui here
-    gl_window.swap_buffers().unwrap();
+    if let Err(error) = gl_window.swap_buffers() {
+        eprintln!("Failed to present a frame: {error}");
+    }
 
     control_flow
 }
