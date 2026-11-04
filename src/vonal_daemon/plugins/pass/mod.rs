@@ -112,22 +112,15 @@ impl Pass {
         }
     }
 
-    fn copy_secret(&self, secret: Secret, name: &str) -> Result<(), Box<dyn Error>> {
-        let mut child = self
-            .create_command(self.copy_command(secret), name)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        if let Some(stdout) = child.stdout.take() {
-            let reader = BufReader::new(stdout);
-            if let Some(result) = reader.lines().next() {
-                Command::new("notify-send").arg(result?).spawn()?;
-                return Ok(());
-            }
-        }
-
-        // nothing was printed, so it's probably failed
-        check_output(&child.wait_with_output()?)
+    /// Runs in the background, because decrypting can wait on a passphrase prompt,
+    /// and blocking the event loop would freeze the daemon until it's answered.
+    fn copy_secret(&self, secret: Secret, name: &str) {
+        let mut command = self.create_command(self.copy_command(secret), name);
+        thread::spawn(move || match copy_first_line(&mut command) {
+            Ok(Some(message)) => notify(&message),
+            Ok(None) => {}
+            Err(error) => notify(&error.to_string()),
+        });
     }
 
     fn run_bash(&self, command: &str, name: &str) -> Result<(), Box<dyn Error>> {
@@ -139,10 +132,7 @@ impl Pass {
         let mut command = self.create_command(self.show_command(secret), name);
         thread::spawn(move || {
             if let Err(error) = type_first_line(&mut command, is_wayland) {
-                Command::new("notify-send")
-                    .arg(error.to_string())
-                    .spawn()
-                    .ok();
+                notify(&error.to_string());
             }
         });
     }
@@ -169,7 +159,7 @@ impl Pass {
     }
 
     fn render_copy_button(
-        &mut self,
+        &self,
         rui: &mut crate::theme::list::RowUi,
         gl_window: &crate::windowing::GlutinWindowContext,
         secret: Secret,
@@ -178,13 +168,9 @@ impl Pass {
     ) {
         if rui.primary_action("Copy").activated {
             gl_window.set_visible(false);
-            if let Err(e) = self.copy_secret(secret, pw) {
-                gl_window.set_visible(true);
-                self.add_message(query.clone(), e.to_string());
-            } else {
-                *query = "".into();
-                ListState::reset(rui.ui.ctx(), 0);
-            }
+            self.copy_secret(secret, pw);
+            *query = "".into();
+            ListState::reset(rui.ui.ctx(), 0);
         }
     }
 
@@ -448,6 +434,43 @@ impl Plugin for Pass {
     }
 }
 
+/// Returns the first line printed by the copy command, which is its status message.
+fn copy_first_line(copy: &mut Command) -> Result<Option<String>, Box<dyn Error>> {
+    let mut child = copy
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let first_line = match child.stdout.take() {
+        Some(stdout) => BufReader::new(stdout).lines().next().transpose()?,
+        None => None,
+    };
+    let Some(message) = first_line else {
+        // nothing was printed, so it's probably failed
+        check_output(&child.wait_with_output()?)?;
+        return Ok(None);
+    };
+
+    // Not `wait_with_output`: the clipboard tool stays in the background
+    // holding stderr open, so reading it to the end would block until then.
+    child.wait()?;
+    Ok(Some(message))
+}
+
+/// A desktop without a notification service must not lose the message,
+/// so it's also logged. Only status and error messages come here, never secrets.
+fn notify(message: &str) {
+    eprintln!("pass plugin: {message}");
+    if let Err(error) = Command::new("notify-send")
+        .arg(message)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
+        eprintln!("pass plugin: failed to run notify-send: {error}");
+    }
+}
+
 /// Types the first line printed by `show`, like `pass show -c` copies only the first line.
 /// The typing tool depends on the display server, so the config doesn't have to.
 fn type_first_line(show: &mut Command, is_wayland: bool) -> Result<(), Box<dyn Error>> {
@@ -498,3 +521,40 @@ impl Display for PassError {
 }
 
 impl Error for PassError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    fn bash(script: &str) -> Command {
+        let mut command = Command::new("bash");
+        command.arg("-c").arg(script);
+        command
+    }
+
+    #[test]
+    fn copy_returns_the_status_message() {
+        let message = copy_first_line(&mut bash("echo Copied; echo ignored")).unwrap();
+        assert_eq!(message.as_deref(), Some("Copied"));
+    }
+
+    #[test]
+    fn copy_reports_stderr_when_it_fails() {
+        let error = copy_first_line(&mut bash("echo 'decryption failed' >&2; exit 2")).unwrap_err();
+        assert_eq!(error.to_string(), "decryption failed");
+    }
+
+    #[test]
+    fn copy_succeeds_silently_without_output() {
+        assert!(copy_first_line(&mut bash("exit 0")).unwrap().is_none());
+    }
+
+    #[test]
+    fn copy_does_not_wait_for_a_background_process_holding_stderr() {
+        let started = Instant::now();
+        let message = copy_first_line(&mut bash("sleep 5 & echo Copied")).unwrap();
+        assert_eq!(message.as_deref(), Some("Copied"));
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+}
