@@ -1,6 +1,22 @@
 use serde::{Deserialize, Serialize};
 
-pub const SOCKET_PATH: &str = "vonal-socket";
+use std::path::PathBuf;
+
+/// Absolute path to the IPC socket.
+///
+/// This must not be a relative path: the daemon and `vonalc` are generally
+/// started from different working directories, so a relative path made
+/// `vonalc` silently connect to the wrong place (or nothing at all) unless it
+/// happened to be invoked from the daemon's cwd.
+pub fn socket_path() -> PathBuf {
+    match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(dir) if !dir.is_empty() => PathBuf::from(dir).join("vonal.sock"),
+        _ => {
+            let user = std::env::var("USER").unwrap_or_else(|_| "default".into());
+            PathBuf::from(format!("/tmp/vonal-{user}.sock"))
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
